@@ -4,11 +4,35 @@ import logging
 import re
 import time
 import timeit
+from functools import wraps
 from random import randint
 from urllib.parse import parse_qs, urlparse, urlencode
 
 import requests
 from bs4 import BeautifulSoup, Tag
+
+
+def cached(func):
+    # FIXME: use @pickle instead
+    cache_file = 'cache.json'
+    try:
+        with open(cache_file, encoding='utf-8') as pers:
+            func.cache = json.load(pers)
+    except FileNotFoundError as e:
+        func.cache = {}
+
+    @wraps(func)
+    def wrapper(*args):
+        try:
+            return func.cache[str(args)]
+        except KeyError:
+            func.cache[str(args)] = result = func(*args)
+            with open(cache_file, 'w') as pers:
+                json.dump(func.cache, pers, ensure_ascii=False, indent=2)
+            return result
+
+    return wrapper
+
 
 # 设置时间格式
 DATE_TIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
@@ -32,10 +56,12 @@ def list_debug(l: list):
     line_number = inspect.stack()[1][2]
     log.eye_catching_logging('called from [line:%s]' % (line_number))
 
-    log.eye_catching_logging('START OF PRINTING LIST')
+    posfix = 'OF PRINTING LIST with size of [{length}]'.format(length=len(l))
+
+    log.eye_catching_logging('{position} {posfix}'.format(position='start', posfix=posfix))
     for v in l:
         log.debug(v)
-    log.eye_catching_logging('END OF PRINTING LIST')
+    log.eye_catching_logging('{position} {posfix}'.format(position='end', posfix=posfix))
 
 
 log.list_debug = list_debug
@@ -69,6 +95,7 @@ session.headers = headers
 data_dir = '.'
 
 
+# FIXME: add  JSON serializable support
 class CityIdName(object):
     def __init__(self, city_id: str, city_name: str):
         self.id = city_id
@@ -94,6 +121,7 @@ class Shop(object):
         # TODO: google it for if it can strify automatically
         return 'name: %s, address: %s, lat: %s, lng: %s, geo_hash: %s, url: %s' % (
             self.name, self.address, self.lat, self.lng, self.geo_hash, self.urls)
+
 
 
 def _export_header_to_csv(column_names, save, seperator):
@@ -155,7 +183,6 @@ def parse_shop_page(shop: Shop):
         soup = BeautifulSoup(res.text, 'lxml')
 
         # 获取基本信息
-        # TODO：获取月销量和点赞数
         food_data_nodes = soup.find_all('script', {'type': 'text/template', 'id': re.compile('foodcontext-\d+')})
 
         # log.debug(json.dumps([json.loads(food_data_node.string) for food_data_node in food_data_nodes], ensure_ascii=False, indent=2))
@@ -256,9 +283,9 @@ def find_possiable_addresses(cid_name: CityIdName, shop_name: str):
     json_res = res.json()
 
     addresses = []
-    for address in json_res['s'][1:]:
+    for address in json_res['s']:
         if not is_shop_in_this_city(address, shop_name, cid_name.name):
-            break
+            continue
         addresses.append(address)
 
     log.eye_catching_logging('api response for %s' % cid_name)
@@ -331,22 +358,25 @@ def get_url_by_geo_hash_and_name(shop: Shop):
 
     if len(res_lis) == 0:
         log.eye_catching_logging()
-        log.warning('fail to find url in : {search_url}'.format(search_url=meituan_search_api))
+        log.warning(
+            'fail to find [{shop}] url in : {search_url}'.format(search_url=meituan_search_api, shop=shop.address))
         log.eye_catching_logging()
 
     for res_li in res_lis:
-        res_name = res_li.find('p').string.replace('\n', '').strip()
+        res_name = res_li.find('p', {'class': 'name'}).string.replace('\n', '').strip()
         res_path = res_li.find('a')['href']
 
-        log.debug('SUCCESSED in finding url in : {search_url}'.format(search_url=meituan_search_api))
-        log.debug("result shop name is : %s" % res_name)
-        log.debug("result shop path is : %s" % res_path)
-        if res_path:
-            # TODO: check if need to try all results
-            shop_url = '{host}{path}'.format(host=meituan_waimai_url, path=res_path)
-            shop.urls.append(shop_url)
+        # 检查该搜索结果是否为我们想要的结果 ： 看品牌名是否在搜索结果的标题中
+        if is_the_shop_we_want(res_name, shop.name):
+            log.debug('SUCCESSED in finding url in : {search_url}'.format(search_url=meituan_search_api))
+            log.debug("result shop name is : %s" % res_name)
+            log.debug("result shop path is : %s" % res_path)
 
-            log.debug('url is : {url}'.format(url=shop_url))
+            if res_path:
+                shop_url = '{host}{path}'.format(host=meituan_waimai_url, path=res_path)
+                shop.urls.append(shop_url)
+
+                log.debug('url is : {url}'.format(url=shop_url))
 
     # log.debug(shop)
     pass
@@ -488,7 +518,7 @@ def export_all_shops(parsed_infos: dict, filename):
     pass
 
 
-def parse_shops(shops: list):
+def parse_shops_and_export(shops: list):
     if len(shops) == 0:
         log.eye_catching_logging('商家列表为空')
         return
@@ -525,33 +555,100 @@ def extract_urls(shops: list):
     pass
 
 
-def main():
-    # 1. 获取url
-    # 2. 爬取内容
-    # TODO： 3. 开发前端
-    global data_dir
-    city_name = '湛江'
-    shop_name = '美优乐'
+def remove_duplicate_urls(shops):
+    visited_urls = {}
+    for shop in shops:
+        urls = []
+        for url in shop.urls:
+            if not visited_urls.get(url):
+                urls.append(url)
+                visited_urls[url] = True
 
+        # TODO: check if empty when use it
+        shop.urls = urls
+        pass
+
+    return shops
+
+
+def run_crawler_and_export(city_name, shop_name):
+    global data_dir
     # 确保数据文件夹已创建
     import os
-    data_dir = './{shopname}/{time}'.format(shopname=shop_name, time = time.strftime(DATE_TIME_FORMAT))
+    data_dir = './{shopname}/{time}'.format(shopname=shop_name, time=time.strftime(DATE_TIME_FORMAT))
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
+    shops_exists_in_meituan = collect_shop_urls(city_name, shop_name)
+    # TODO: 添加缓存 {已搜索过的关键词对} 机制（google一下，看Python有没有缓存库）
+    parse_shops_info = parse_shops_and_export(shops_exists_in_meituan)
+
+
+@cached
+def collect_shop_urls(city_name, shop_name):
     # 处理逻辑
-    cid_name = get_city_id_and_name('湛江')
+    cid_name = get_city_id_and_name(city_name)
     addresses = find_possiable_addresses(cid_name, shop_name)
     shops = add_lng_lat_by_address(addresses, shop_name)
     fetch_geo_hash_for_shops(shops)
     batch_get_url_by_geo_hash_and_name(shops)
     shops_exists_in_meituan = get_shops_exists_in_meituan(shops)
+    # 对所有的url进行去重
+    shops_exists_in_meituan = remove_duplicate_urls(shops_exists_in_meituan)
+    return shops_exists_in_meituan
 
-    parse_shops_info = parse_shops(shops_exists_in_meituan)
+
+def main():
+    # 1. 获取url
+    # 2. 爬取内容
+    # TODO： 3. 开发前端: 试试用Python写GUI
+    # TODO:  4. 添加缓存机制（json, sqlite, yaml)
+    city_name = '湛江'
+    shop_name = '美优乐'
+    # city_name = '杭州'
+    # shop_name = '沙县小吃'
+
+    run_crawler_and_export(city_name, shop_name)
+
+
+def is_the_shop_we_want(res_name, shop_name):
+    return shop_name in res_name
+
+
+def test_get_shop_in_search_result():
+    meituan_search_api = 'http://waimai.meituan.com/search/wtmkkyg0wq1b/rt?keyword=%E6%B1%87%E9%91%AB%E5%B0%8F%E5%90%83'
+    res = session.get(meituan_search_api)
+    shop_name = '汇鑫小吃'
+
+    soup = BeautifulSoup(res.text, 'lxml')
+
+    res_lis = soup.find_all('li', {'class': 'rest-list'})
+    for res_li in res_lis:
+        res_name = res_li.find('p', {'class': 'name'}).string.replace('\n', '').strip()
+        res_path = res_li.find('a')['href']
+
+        if is_the_shop_we_want(res_name, shop_name):
+            print(res_name, res_path)
+
+
+@cached
+def test_cache(m):
+    t = 0
+    for i in range(1, m):
+        t = t + t / i + i
+    return t
 
 
 if __name__ == '__main__':
     timer(main)
+    # timer(lambda:test_cache(10000000))
+    # timer(lambda:test_cache(10000000))
+    # timer(lambda:test_cache(10000000))
+    # timer(lambda:test_cache(10000000))
+
+    #
+    # test_get_shop_in_search_result()
+
     #
     # parse_shops([Shop('美优乐', '湛江市$廉江市$$美优乐(安铺店)', '21.460463270004844', '110.03258267897824', 'w7y4pfg23023', [
     #     'http://waimai.meituan.com/restaurant/144833350729852647'
@@ -566,7 +663,6 @@ if __name__ == '__main__':
     # get_url_by_geo_hash_and_name(
     #     Shop('美优乐', '湛江市$廉江市$$美优乐(安铺店)', '21.460463270004844', '110.03258267897824', 'w7y4pfg23023'))
     #
-    # #TODO：change format into this style
     # meituan_search_api = 'http://waimai.meituan.com/search/{geo_hash}/rt?keyword={shop_name}'.format(geo_hash=123,
     #                                                                                                  shop_name=4213)
     #
