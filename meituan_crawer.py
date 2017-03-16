@@ -71,7 +71,7 @@ DATE_TIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
 # logging.basicConfig(format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s')
 logging.basicConfig(format='%(asctime)s %(levelname)s [line:%(lineno)d] %(message)s', datefmt='%H-%M-%S')
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 dashes = '-' * 50
 
@@ -511,7 +511,8 @@ def export_shops_info_to_xls_sheet(shops, sheetname):
     for shop in shops:
         row += 1
         for col, h in enumerate(shops_info_heading):
-            ws.write(row, col, shop.__getattribute__(h))
+            # NOTE: 这里需要str，由其针对urls:list，否则会产生错误
+            ws.write(row, col, str(shop.__getattribute__(h)))
 
     log.eye_catching_logging('成功导出为{sheetname}表单'.format(sheetname=sheetname))
     pass
@@ -711,7 +712,6 @@ def get_city_id_and_name(city_name: str):
     """
     ID = 0
     NAME = 1
-    import os
 
     with open('BaiduMap_cityCode_1102.txt', encoding='utf-8') as city_ids:
         import csv
@@ -773,7 +773,7 @@ def run(city_name='南京', shop_name='鸭血粉丝'):
     # TODO：change into OOP
     # 每次重新创建一个该对象
     global wb
-    wb = xlwt.Workbook('utf-8')
+    wb = xlwt.Workbook(encoding='utf-8')
 
     run_crawler_and_export(city_name, shop_name)
 
