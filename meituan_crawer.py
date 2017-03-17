@@ -565,7 +565,7 @@ class MeituanCrawler(object):
                     "type": "0",
                 })
                 res.encoding = 'utf-8'
-                return len(res.json()['s']) != 0
+                return len(res.json().get('s')) != 0
 
             @lru_cache()
             def _rel(wd, cid, rn):
