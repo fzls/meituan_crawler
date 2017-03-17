@@ -17,6 +17,66 @@ ezxf = xlwt.easyxf
 
 from bs4 import BeautifulSoup, Tag
 
+### log 相关设置
+# 设置时间格式
+DATE_TIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
+
+# logging.basicConfig(format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s')
+logging.basicConfig(format='%(asctime)s %(levelname)s [line:%(lineno)d] %(message)s')
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+
+
+def eye_catching_logging(msg='', logger=log.info):
+    dashes = '-' * 50
+    msg = '%s %s %s' % (dashes, str(msg).title(), dashes)
+    logger(msg)
+
+
+log.eye_catching_logging = eye_catching_logging
+
+
+def list_debug(l: list):
+    line_number = inspect.stack()[1][2]
+    log.eye_catching_logging('called from [line:%s]' % (line_number))
+
+    posfix = 'OF PRINTING LIST with size of [{length}]'.format(length=len(l))
+
+    log.eye_catching_logging('{position} {posfix}'.format(position='start', posfix=posfix))
+    for v in l:
+        log.debug(v)
+    log.eye_catching_logging('{position} {posfix}'.format(position='end', posfix=posfix))
+
+
+log.list_debug = list_debug
+
+
+def json_debug(var):
+    line_number = inspect.stack()[1][2]
+    log.eye_catching_logging('called from [line:%s]' % (line_number))
+    log.debug(json.dumps(var, ensure_ascii=False, indent=2))
+    pass
+
+
+log.json_debug = json_debug
+
+### requests 设置
+meituan_waimai_url = 'http://waimai.meituan.com'
+
+headers = {
+    "Connection": "keep-alive",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
+    "Accept": "*/*",
+    "DNT": "1",
+    "Referer": "http://waimai.meituan.com/?stay=1",
+    "Accept-Encoding": "gzip, deflate, sdch",
+    "Accept-Language": "en,zh-CN;q=0.8,zh;q=0.6,zh-TW;q=0.4,en-GB;q=0.2,ja;q=0.2",
+    "Cookie": "BAIDUID=5365A55222D580D81C224BB2827B9BBD:FG=1; PSTM=1488433005; BIDUPSID=31FB76D71AEF46DDEDAB7059DACCD5B6; BDUSS=mpZeEQybW9uTzlmRUowTEl0UnlXQ3FtMWdWSHFlV0s2OGVGdHE5QUpGM1NtLXRZSVFBQUFBJCQAAAAAAAAAAAEAAAAx-PUbt-fWrsHo6eQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANIOxFjSDsRYc; cflag=15%3A3; BDORZ=B490B5EBF6F3CD402E515D22BCDA1598",
+}
+
+session = requests.session()
+session.headers = headers
+
 ## xls heading相关设置
 shop_heading = [
     'origin_price',
@@ -68,6 +128,28 @@ heading_tpye = {
     'urls': 'text',
 }
 
+heading_cn = {
+    SHOP_NAME: '商铺名',
+    'origin_price': '原价',
+    'price': '现价',
+    'id': 'id',
+    'name': '名称',
+    'isSellOut': '售罄',
+    'month_sold_count': '月销量',
+    'description': '描述',
+    'zan': '点赞数',
+    'minCount': '单次最小购买量',
+
+    'address': '地址',
+    'lat': '纬度',
+    'lng': '经度',
+    'month_sale_count': '月销量',
+    'start_price': '起送价',
+    'send_price': '配送费',
+    'send_time': '平均送餐时间',
+    'urls': '店铺网址',
+}
+
 
 def change_type(val, type_):
     if type_ == 'bool':
@@ -88,65 +170,6 @@ type_fmt = {
     'int': ezxf(num_format_str='#,##0'),
     'bool': ezxf(num_format_str='#,##0'),
 }
-
-### log 相关设置
-# 设置时间格式
-DATE_TIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
-
-# logging.basicConfig(format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s')
-logging.basicConfig(format='%(asctime)s %(levelname)s [line:%(lineno)d] %(message)s', datefmt='%H-%M-%S')
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-
-
-def eye_catching_logging(msg=''):
-    dashes = '-' * 50
-    log.info('%s %s %s' % (dashes, msg.title(), dashes))
-
-
-log.eye_catching_logging = eye_catching_logging
-
-
-def list_debug(l: list):
-    line_number = inspect.stack()[1][2]
-    log.eye_catching_logging('called from [line:%s]' % (line_number))
-
-    posfix = 'OF PRINTING LIST with size of [{length}]'.format(length=len(l))
-
-    log.eye_catching_logging('{position} {posfix}'.format(position='start', posfix=posfix))
-    for v in l:
-        log.debug(v)
-    log.eye_catching_logging('{position} {posfix}'.format(position='end', posfix=posfix))
-
-
-log.list_debug = list_debug
-
-
-def json_debug(var):
-    line_number = inspect.stack()[1][2]
-    log.eye_catching_logging('called from [line:%s]' % (line_number))
-    log.debug(json.dumps(var, ensure_ascii=False, indent=2))
-    pass
-
-
-log.json_debug = json_debug
-
-### requests 设置
-meituan_waimai_url = 'http://waimai.meituan.com'
-
-headers = {
-    "Connection": "keep-alive",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
-    "Accept": "*/*",
-    "DNT": "1",
-    "Referer": "http://waimai.meituan.com/?stay=1",
-    "Accept-Encoding": "gzip, deflate, sdch",
-    "Accept-Language": "en,zh-CN;q=0.8,zh;q=0.6,zh-TW;q=0.4,en-GB;q=0.2,ja;q=0.2",
-    "Cookie": "BAIDUID=5365A55222D580D81C224BB2827B9BBD:FG=1; PSTM=1488433005; BIDUPSID=31FB76D71AEF46DDEDAB7059DACCD5B6; BDUSS=mpZeEQybW9uTzlmRUowTEl0UnlXQ3FtMWdWSHFlV0s2OGVGdHE5QUpGM1NtLXRZSVFBQUFBJCQAAAAAAAAAAAEAAAAx-PUbt-fWrsHo6eQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANIOxFjSDsRYc; cflag=15%3A3; BDORZ=B490B5EBF6F3CD402E515D22BCDA1598",
-}
-
-session = requests.session()
-session.headers = headers
 
 
 ######################################################################
@@ -192,7 +215,7 @@ class MeituanCrawler(object):
         # 写入heading
         row = 0
         for col, h in enumerate(shop_heading):
-            ws.write(row, col, h)
+            ws.write(row, col, heading_cn[h])
 
         # 写入记录
         for food in parsed_info:
@@ -314,7 +337,7 @@ class MeituanCrawler(object):
         # 写入heading
         row = 0
         for col, h in enumerate(shops_heading):
-            ws.write(row, col, h)
+            ws.write(row, col, heading_cn[h])
 
         # 写入记录
         for shop_name, parsed_info in parsed_infos.items():
@@ -371,7 +394,7 @@ class MeituanCrawler(object):
 
         row = 0
         for col, h in enumerate(shops_info_heading):
-            ws.write(row, col, h)
+            ws.write(row, col, heading_cn[h])
         ws.write(row, len(shops_info_heading), 'geo_hash')
 
         for shop in shops:
@@ -531,8 +554,53 @@ class MeituanCrawler(object):
         return shops
 
     def find_possiable_addresses(self, cid_name: CityIdName, shop_name: str):
+        def find_res_upper_limit(wd, cid, rn_l=0, rn_h=130):
+            from functools import lru_cache
+            @lru_cache()
+            def _try(wd, cid, rn):
+                res = session.get('http://map.baidu.com/su', params={
+                    "wd": wd,
+                    "cid": cid,
+                    "rn": rn,
+                    "type": "0",
+                })
+                res.encoding = 'utf-8'
+                return len(res.json()['s']) != 0
+
+            @lru_cache()
+            def _rel(wd, cid, rn):
+                # TTT for -1, TTF for 0, TFF,FFF for 1
+                if _try(wd, cid, rn):
+                    if _try(wd, cid, rn + 1):
+                        return -1
+                    else:
+                        return 0
+                else:
+                    return 1
+
+            rn_l = 0
+            rn_h = 130
+            if _try(wd, cid, rn_h):
+                print('found at high', rn_h)
+                return rn_h
+
+            while True:
+                rn = int((rn_l + rn_h) / 2)
+                r = _rel(wd, cid, rn)
+                if r == 0:
+                    return rn
+                elif r == -1:
+                    rn_l = rn + 1
+                else:
+                    rn_h = rn - 1
+
+                if rn_l > rn_h:
+                    return -1
         bdmap_find_address_by_name_api = 'http://map.baidu.com/su'
-        result_number = '65'
+        # note: 这个数可能会引起问题，之前65在广东华莱士会出现问题，其他地方不会
+        # 采用二分法找到合适的结果数
+        result_number = find_res_upper_limit(shop_name, cid_name.id, 0, 130)
+        log.eye_catching_logging('合适的结果数为:%d'%result_number, log.error)
 
         query = {
             "wd": shop_name,
@@ -576,11 +644,11 @@ class MeituanCrawler(object):
             for city_id_name in csv.reader(city_ids):
                 if city_name in city_id_name[NAME]:
                     log.eye_catching_logging('city id found')
-                    log.info(city_id_name)
+                    log.eye_catching_logging(city_id_name, log.error)
 
                     return CityIdName(*city_id_name)
 
-            log.info('%s not found in city list' % city_name)
+            log.eye_catching_logging('%s not found in city list' % city_name, log.error)
             return [0, 'not found']
 
     def collect_shop_urls(self, city_name, shop_name):
@@ -625,7 +693,9 @@ class MeituanCrawler(object):
         # city_name = '湛江'
         # shop_name = '美优乐'
 
-        self.run_crawler_and_export(city_name, shop_name)
+        log.eye_catching_logging('开始抓取[{city}]:[{shop}]'.format(city=city_name, shop=shop_name), log.error)
+        self.run_crawler_and_export(city_name.strip(), shop_name.strip())
+        log.eye_catching_logging('完成抓取[{city}]:[{shop}]'.format(city=city_name, shop=shop_name), log.error)
 
         # TODO: 设置不同类型的格式，以及每个列对应的类型
 
@@ -667,6 +737,7 @@ def main():
 
 if __name__ == '__main__':
     timer(main)
+
 
     # name = get_sheet_name('杭州\?%$123as-.,[]市江干区沙县小吃(中共闸弄口街道工作委员会西北)179_商品信息')
     # print(name)
