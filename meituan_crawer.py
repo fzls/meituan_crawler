@@ -237,9 +237,12 @@ class MeituanCrawler(object):
         return re.sub(r'\[|\]|:|\\|\?|/*|\x00', '', filename)[:31]
 
     def parse_shop_page(self, shop: Shop):
+        return self.parse_urls(shop.urls, shop.name, shop.address)
+
+    def parse_urls(self, urls, name='商铺', address=''):
         parsed_infos = []
 
-        for idx, shop_url in enumerate(shop.urls):
+        for idx, shop_url in enumerate(urls):
             res = session.get(shop_url)
 
             soup = BeautifulSoup(res.text, 'lxml')
@@ -313,8 +316,8 @@ class MeituanCrawler(object):
             if parsed_info:
                 parsed_infos.append(parsed_info)
 
-            shop_unique_name = '{shop_address}'.format(shop_name=shop.name,
-                                                       shop_address=shop.address.replace('$', ''))
+            shop_unique_name = '{shop_address}'.format(shop_name=name,
+                                                       shop_address=address.replace('$', ''))
             if idx > 0:
                 shop_unique_name += '_{index}'.format(index=idx)
             shop_unique_name += '_商品信息'
@@ -557,7 +560,7 @@ class MeituanCrawler(object):
         def find_res_upper_limit(wd, cid, rn_l=0, rn_h=130):
             from functools import lru_cache
             @lru_cache()
-            def _try(wd, cid, rn):
+            def _try(wd, cid, rn, max_try = 5):
                 res = session.get('http://map.baidu.com/su', params={
                     "wd": wd,
                     "cid": cid,
@@ -565,7 +568,17 @@ class MeituanCrawler(object):
                     "type": "0",
                 })
                 res.encoding = 'utf-8'
-                return len(res.json().get('s')) != 0
+                try:
+                    return len(res.json().get('s')) != 0
+                except Exception as e:
+                    log.eye_catching_logging(str(e), log.error)
+                    log.eye_catching_logging("sleep for 0.5s", log.error)
+                    time.sleep(0.5)
+
+                    if max_try<=0:
+                        log.eye_catching_logging('address get failed with max_try times', log.error)
+                        return False
+                    return _try(wd,cid,rn, max_try-1)
 
             @lru_cache()
             def _rel(wd, cid, rn):
