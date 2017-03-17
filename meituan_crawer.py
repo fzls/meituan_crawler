@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import inspect
 import json
 import logging
@@ -12,6 +15,8 @@ from urllib.parse import parse_qs, urlparse, urlencode
 
 import requests
 import xlwt
+ezxf = xlwt.easyxf
+
 from bs4 import BeautifulSoup, Tag
 
 wb = xlwt.Workbook(encoding='utf-8')
@@ -42,6 +47,47 @@ shops_info_heading = [
     'send_time',
     'urls',
 ]
+
+heading_tpye = {
+    SHOP_NAME: 'text',
+    'origin_price': 'float',
+    'price': 'float',
+    'id': 'int',
+    'name': 'text',
+    'isSellOut': 'bool',
+    'month_sold_count': 'int',
+    'description': 'text',
+    'zan': 'int',
+    'minCount': 'int',
+
+    'address': 'text',
+    'lat': 'float',
+    'lng': 'float',
+    'month_sale_count': 'text',
+    'start_price': 'text',
+    'send_price': 'text',
+    'send_time': 'text',
+    'urls': 'text',
+}
+
+def change_type(val, type_):
+    if type_ == 'bool':
+        return bool(val)
+    elif type_ == 'float' and val is not None:
+        return float(val)
+    elif type_ == 'int' and val is not None:
+        return int(val)
+    elif not val:
+        return ''
+    else:
+        return str(val)
+
+type_fmt = {
+    'text': ezxf(),
+    'float': ezxf(num_format_str='#,##0.00'),
+    'int':  ezxf(num_format_str='#,##0'),
+    'bool': ezxf(num_format_str='#,##0'),
+}
 
 
 def cached(func):
@@ -77,7 +123,7 @@ dashes = '-' * 50
 
 
 def eye_catching_logging(msg=''):
-    log.debug('%s %s %s' % (dashes, msg.title(), dashes))
+    log.info('%s %s %s' % (dashes, msg.title(), dashes))
 
 
 log.eye_catching_logging = eye_catching_logging
@@ -208,7 +254,7 @@ def export_shop_to_xls_sheet(parsed_info, sheet_name):
     for food in parsed_info:
         row += 1
         for col, h in enumerate(shop_heading):
-            ws.write(row, col, food[h])
+            ws.write(row, col, change_type(food[h], heading_tpye[h]), type_fmt[heading_tpye[h]])
     pass
 
 
@@ -327,7 +373,7 @@ def is_shop_in_this_city(address: str, shop_name: str, city_name: str):
 def timer(func, *args, **kwargs):
     ran_time = timeit.timeit(func, number=1)
 
-    log.debug('method %s run %s seconds' % (func, ran_time))
+    log.info('method %s run %s seconds' % (func, ran_time))
 
 
 def export_all_to_csv(parsed_infos: dict, unique_file_name: str, seperator=','):
@@ -399,7 +445,7 @@ def export_all_to_xls_sheet(parsed_infos, sheet_name):
             food[SHOP_NAME] = shop_name
             # 将数据一行行写入表单
             for col, h in enumerate(shops_heading):
-                ws.write(row, col, food[h])
+                ws.write(row, col, change_type(food[h], heading_tpye[h]), type_fmt[heading_tpye[h]])
         pass
 
     log.eye_catching_logging('成功导出为{sheetname}表单'.format(sheetname=sheet_name))
@@ -431,7 +477,7 @@ def export_all_shops(parsed_infos: dict, filename):
     export_all_to_xls_sheet(parsed_infos, filename)
 
     log.eye_catching_logging('完成导出{filename}'.format(filename=filename))
-    log.debug('')
+    log.info('')
     pass
 
 
@@ -441,7 +487,7 @@ def extract_urls(shops: list):
         urls += shop.urls
 
     log.eye_catching_logging('提取url列表')
-    log.list_debug(urls)
+    log.list_info(urls)
 
     return urls
     pass
@@ -507,12 +553,14 @@ def export_shops_info_to_xls_sheet(shops, sheetname):
     row = 0
     for col, h in enumerate(shops_info_heading):
         ws.write(row, col, h)
+    ws.write(row, len(shops_info_heading), 'geo_hash')
 
     for shop in shops:
         row += 1
         for col, h in enumerate(shops_info_heading):
             # NOTE: 这里需要str，由其针对urls:list，否则会产生错误
-            ws.write(row, col, str(shop.__getattribute__(h)))
+            ws.write(row, col, change_type(shop.__getattribute__(h), heading_tpye[h]), type_fmt[heading_tpye[h]])
+        ws.write(row, len(shops_info_heading), str(shop.geo_hash))
 
     log.eye_catching_logging('成功导出为{sheetname}表单'.format(sheetname=sheetname))
     pass
@@ -719,7 +767,7 @@ def get_city_id_and_name(city_name: str):
         for city_id_name in csv.reader(city_ids):
             if city_name in city_id_name[NAME]:
                 log.eye_catching_logging('city id found')
-                log.debug(city_id_name)
+                log.info(city_id_name)
 
                 return CityIdName(*city_id_name)
 
@@ -758,7 +806,7 @@ def run_crawler_and_export(city_name, shop_name):
     parse_shops_info = parse_shops_and_export(shops_exists_in_meituan)
 
 
-def run(city_name='南京', shop_name='鸭血粉丝'):
+def run(city_name='湛江', shop_name='美优乐'):
     """
     根据输入的城市名和商店名，找到该城市内该商店在美团所开设的所有店铺的商品的信息列表，并导出为xls文件
     :return:
@@ -779,12 +827,13 @@ def run(city_name='南京', shop_name='鸭血粉丝'):
 
     # TODO: 设置不同类型的格式，以及每个列对应的类型
 
-    global data_dir
-    # 确保数据文件夹已创建
-    data_dir = './结果/{shopname}'.format(shopname=shop_name, time=time.strftime(DATE_TIME_FORMAT))
+    # global data_dir
+    # # 确保数据文件夹已创建
+    # data_dir = './结果/{shopname}'.format(shopname=shop_name, time=time.strftime(DATE_TIME_FORMAT))
+    #
+    # if not os.path.exists(data_dir):
+    #     os.makedirs(data_dir)
 
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
     saved_file = '{current_time}_{location}_{shop}.xls'.format(
         current_time=time.strftime(DATE_TIME_FORMAT),
         location=city_name,
@@ -793,13 +842,18 @@ def run(city_name='南京', shop_name='鸭血粉丝'):
 
     res = [wb, saved_file]
 
-    # log.debug(res)
+    # log.info(res)
 
     return res
 
 
 def main():
-    run('湛江', '美优乐')
+    # city = input('城市名: ')
+    # name = input('商家名: ')
+    #
+    # wb, saved_file = run(city, name)
+    wb, saved_file = run()
+    wb.save(saved_file)
 
 
 if __name__ == '__main__':
