@@ -64,14 +64,47 @@ log.json_debug = json_debug
 meituan_waimai_url = 'http://waimai.meituan.com'
 
 headers = {
+    # "Host": "waimai.meituan.com",
     "Connection": "keep-alive",
+    "Cache-Control": "max-age=0",
+    "Upgrade-Insecure-Requests": "1",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
-    "Accept": "*/*",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "DNT": "1",
-    "Referer": "http://waimai.meituan.com/?stay=1",
     "Accept-Encoding": "gzip, deflate, sdch",
+    "Referer": "http://waimai.meituan.com",
     "Accept-Language": "en,zh-CN;q=0.8,zh;q=0.6,zh-TW;q=0.4,en-GB;q=0.2,ja;q=0.2",
-    "Cookie": "BAIDUID=5365A55222D580D81C224BB2827B9BBD:FG=1; PSTM=1488433005; BIDUPSID=31FB76D71AEF46DDEDAB7059DACCD5B6; BDUSS=mpZeEQybW9uTzlmRUowTEl0UnlXQ3FtMWdWSHFlV0s2OGVGdHE5QUpGM1NtLXRZSVFBQUFBJCQAAAAAAAAAAAEAAAAx-PUbt-fWrsHo6eQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANIOxFjSDsRYc; cflag=15%3A3; BDORZ=B490B5EBF6F3CD402E515D22BCDA1598",
+    "Cookie":
+        "BAIDUID=5365A55222D580D81C224BB2827B9BBD:FG=1; "
+        "PSTM=1488433005; BIDUPSID=31FB76D71AEF46DDEDAB7059DACCD5B6; "
+        "BDUSS=mpZeEQybW9uTzlmRUowTEl0UnlXQ3FtMWdWSHFlV0s2OGVGdHE5QUpGM1NtLXRZSVFBQUFBJCQAAAAAAAAAAAEAAAAx-PUbt-fWrsHo6eQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANIOxFjSDsRYc; "
+        "cflag=15%3A3; "
+        "BDORZ=B490B5EBF6F3CD402E515D22BCDA1598; "
+        "w_uuid=kmIPS3P4B38ydNA-3Yl9Vn5TzEGkTuG59D2C4pKPtlt6Y37qEPCb7eO4xLiGV-3x; "
+        "rvd=27303032; "
+        "abt=1489757394.0%7CBDE; "
+        "rvct=59; "
+        "ci=20; "
+        "__mta=142562829.1489572822289.1489757414882.1489757425452.4; "
+        "uuid=aaed622404d6d7fea9a0.1489572821.0.0.0; "
+        "oc=VGWS9bnksswT-gz8M7PP-Ne2q5g07ua8nfubsP9-rEXUnmQrxtF3jDBs3H6L0QNcaHHphDGejyd7HvPsGDgzOvM4voY-wYZmDkVOx-pagiHERjILjD3HpqtkPiYMhhKpblRJbv9DTGRCNtag10fg6NGJIbzp5xyspZpoaiF5aVc; "
+        "__utma=211559370.1817606946.1489557637.1489572806.1489757397.2; "
+        "__utmz=211559370.1489572806.1.1.utmcsr=baidu|utmccn=baidu|utmcmd=organic|utmcct=zt_search; "
+        "__utmv=211559370.|1=city=hangzhou=1^3=dealtype=11=1; "
+        "_ga=GA1.2.1817606946.1489557637; "
+        "w_cid=440111; "
+        "w_cpy_cn=\"%E7%99%BD%E4%BA%91%E5%8C%BA\"; "
+        "w_cpy=baiyunqu; "
+        "waddrname=\"%E7%BE%8E%E4%BC%98%E4%B9%90%28%E9%92%9F%E8%90%BD%E6%BD%AD%E5%BA%97%29\"; "
+        "w_geoid=ws0th9r1hpzn; "
+        "w_ah=\"23.38598694652319,113.41067299246788,%E7%BE%8E%E4%BC%98%E4%B9%90%28%E9%92%9F%E8%90%BD%E6%BD%AD%E5%BA%97%29|23.38598694652319,113.41067299246788,%E6%9C%AA%E7%9F%A5|20.559364277869463,109.84969820827246,%E6%B9%9B%E6%B1%9F%E5%B8%82%24%E9%9B%B7%E5%B7%9E%E5%B8%82%24%24%E7%BE%8E%E4%BC%98%E4%B9%90%28%E9%BE%99%E9%97%A81%E5%BA%97%29|20.336991380900145,110.18095470964909,%E6%B9%9B%E6%B1%9F%E5%B8%82%24%E5%BE%90%E9%97%BB%E5%8E%BF%24%24%E7%BE%8E%E4%BC%98%E4%B9%90%28%E9%87%91%E8%B4%B8%E5%BA%97%29|30.084730871021748,120.06984293460846,%E6%9D%AD%E5%B7%9E%E7%BE%8E%E4%BC%98%E4%B9%90%E7%A7%91%E6%8A%80%E6%9C%89%E9%99%90%E5%85%AC%E5%8F%B8|21.270870845764875,110.33403977751732,%E7%BE%8E%E4%BC%98%E4%B9%90%28%E9%BA%BB%E7%AB%A01%E5%BA%97%29|23.30090392380953,113.36225274950266,%E7%BE%8E%E4%BC%98%E4%B9%90%28%E5%A4%AA%E5%92%8C%E5%BA%97%29|23.176579847931862,113.26622597873211,%E5%B0%8A%E5%AE%9D%E6%AF%94%E8%90%A8%28%E6%9C%BA%E5%9C%BA%E8%B7%AF%E5%BA%97%29|23.18809188902378,113.27573172748089,%E5%A4%96%E5%A9%86%E5%AE%B6|23.178626876324415,113.26014876365662,%E6%96%B0%E5%AE%A2%E5%AE%B6%28%E8%BF%9C%E6%99%AF%E8%B7%AF%E5%BA%97%29\";"
+        "JSESSIONID=196iown7kardy1amnqmutiy82x; _"
+        "ga=GA1.3.1817606946.1489557637; _"
+        "gat=1; __"
+        "mta=142562829.1489572822289.1489757425452.1490092529677.5; "
+        "w_utmz=\"utm_campaign=(direct)&utm_source=(direct)&utm_medium=(none)&utm_content=(none)&utm_term=(none)\"; "
+        "w_visitid=c5ba70c7-4160-42b9-b168-0a9eabc359b8"
+
 }
 
 session = requests.session()
@@ -246,6 +279,7 @@ class MeituanCrawler(object):
             res = session.get(shop_url)
 
             soup = BeautifulSoup(res.text, 'lxml')
+            logging.critical(soup.prettify())
 
             # 获取基本信息
             food_data_nodes = soup.find_all('script', {'type': 'text/template', 'id': re.compile('foodcontext-\d+')})
@@ -749,7 +783,11 @@ def main():
 
 
 if __name__ == '__main__':
-    timer(main)
+    # timer(main)
+    res = session.get('http://waimai.meituan.com/restaurant/144768513906661269')
+    soup = BeautifulSoup(res.text, 'lxml')
+    logging.critical(soup.prettify())
+    logging.critical(res.cookies)
 
 
     # name = get_sheet_name('杭州\?%$123as-.,[]市江干区沙县小吃(中共闸弄口街道工作委员会西北)179_商品信息')
