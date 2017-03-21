@@ -136,7 +136,7 @@ shops_info_heading = [
     'start_price',
     'send_price',
     'send_time',
-    'urls',
+    'url',
 ]
 
 heading_tpye = {
@@ -158,7 +158,7 @@ heading_tpye = {
     'start_price': 'text',
     'send_price': 'text',
     'send_time': 'text',
-    'urls': 'text',
+    'url': 'text',
 }
 
 heading_cn = {
@@ -180,7 +180,7 @@ heading_cn = {
     'start_price': '起送价',
     'send_price': '配送费',
     'send_time': '平均送餐时间',
-    'urls': '店铺网址',
+    'url': '{current_time}:当前店铺网址（PS:美团外卖为防爬虫，每隔一段时间店铺的id会更新，对应的网址也会变化)'.format(current_time=time.ctime()),
 }
 
 
@@ -270,7 +270,7 @@ class MeituanCrawler(object):
         return re.sub(r'\[|\]|:|\\|\?|/*|\x00', '', filename)[:31]
 
     def parse_shop_page(self, shop: Shop):
-        return self.parse_urls(shop.urls, shop.name, shop.address)
+        return self.parse_urls([shop.url], shop.name, shop.address)
 
     def parse_urls(self, urls, name='商铺', address=''):
         parsed_infos = []
@@ -354,7 +354,7 @@ class MeituanCrawler(object):
             shop_name = details_list.find_all('span')[0].string.strip()
 
             shop_unique_name = '{shop_name}@{shop_address}'.format(shop_name=shop_name,
-                                                       shop_address=address.replace('$', ''))
+                                                                   shop_address=address.replace('$', ''))
             if idx > 0:
                 shop_unique_name += '_{index}'.format(index=idx)
             shop_unique_name += '_商品信息'
@@ -447,19 +447,16 @@ class MeituanCrawler(object):
         log.eye_catching_logging('成功导出为{sheetname}表单'.format(sheetname=sheetname))
         pass
 
-    def remove_duplicate_urls(self, shops):
+    def remove_duplicate_shops(self, shops):
+        unique_shops = []
         visited_urls = {}
+
         for shop in shops:
-            urls = []
-            for url in shop.urls:
-                if not visited_urls.get(url):
-                    urls.append(url)
-                    visited_urls[url] = True
+            if not visited_urls.get(shop.url):
+                unique_shops.append(shop)
+                visited_urls[shop.url] = True
 
-            shop.urls = urls
-            pass
-
-        return shops
+        return unique_shops
 
     def filter_out_shop_with_no_urls(self, shops):
         filtered = list(filter(lambda shop: shop.urls, shops))
@@ -477,7 +474,7 @@ class MeituanCrawler(object):
 
         return res_tag_with_str
 
-    def get_url_by_geo_hash_and_name(self, shop: Shop):
+    def get_shop_with_url_by_geo_hash_and_name(self, shop: Shop):
         query = {'keyword': shop.name}
         meituan_search_api = 'http://waimai.meituan.com/search/{geo_hash}/rt?{query}'.format(
             geo_hash=shop.geo_hash, query=urlencode(query))
@@ -497,15 +494,17 @@ class MeituanCrawler(object):
                 'fail to find [{shop}] url in : {search_url}'.format(search_url=meituan_search_api, shop=shop.address))
             log.eye_catching_logging()
 
+        shops_in_res = []
+
         for res_li in res_lis:
             res_name = res_li.find('p', {'class': 'name'}).string.replace('\n', '').strip()
             res_path = res_li.find('a')['href']
 
-            res_total = self.get_striped_str(res_li.find('span', {'class': 'total'}))
-            res_start_price = self.get_striped_str(res_li.find('span', {'class': 'start-price'}))
+            res_total = self.get_striped_str(res_li.find('span', {'class': 'total'})).replace('月售','')
+            res_start_price = self.get_striped_str(res_li.find('span', {'class': 'start-price'})).replace('起送','')
 
-            res_send_price = self.get_striped_str(res_li.find('span', {'class': 'send-price'}))
-            res_send_time = self.get_striped_str(res_li.find('p', {'class': 'sned-time'}))
+            res_send_price = self.get_striped_str(res_li.find('span', {'class': 'send-price'})).replace('配送费', '')
+            res_send_time = self.get_striped_str(res_li.find('p', {'class': 'send-time'})).replace('平均送餐时间：', '')
 
             log.debug([res_total, res_start_price, res_send_price, res_send_time])
 
@@ -517,22 +516,30 @@ class MeituanCrawler(object):
 
                 if res_path:
                     shop_url = '{host}{path}'.format(host=meituan_waimai_url, path=res_path)
-                    shop.urls.append(shop_url)
-                    shop.month_sale_count = res_total
+
+                    shop_in_res = Shop(res_name, shop.address,shop.lat, shop.lng,shop.geo_hash)
                     # TODO: add elems
-                    shop.start_price = res_start_price
-                    shop.send_price = res_send_price
-                    shop.send_time = res_send_time
+                    shop_in_res.url = shop_url
+                    shop_in_res.month_sale_count = res_total
+                    shop_in_res.start_price = res_start_price
+                    shop_in_res.send_price = res_send_price
+                    shop_in_res.send_time = res_send_time
 
                     log.debug('url is : {url}'.format(url=shop_url))
 
+                    shops_in_res.append(shop_in_res)
+
         # log.debug(shop)
+        return shops_in_res
         pass
 
-    def batch_get_url_by_geo_hash_and_name(self, shops):
+    def batch_get_shop_with_url_by_geo_hash_and_name(self, shops):
+        shops_exists_in_meituan = []
         for shop in shops:
             if shop.geo_hash:
-                self.get_url_by_geo_hash_and_name(shop)
+                shops_exists_in_meituan += self.get_shop_with_url_by_geo_hash_and_name(shop)
+
+        return shops_exists_in_meituan
 
     def fetch_geo_hash_for_shops(self, shops: list):
         log.eye_catching_logging('start fetch geo hash')
@@ -597,7 +604,7 @@ class MeituanCrawler(object):
         def find_res_upper_limit(wd, cid, rn_l=0, rn_h=130):
             from functools import lru_cache
             @lru_cache()
-            def _try(wd, cid, rn, max_try = 5):
+            def _try(wd, cid, rn, max_try=5):
                 res = session.get('http://map.baidu.com/su', params={
                     "wd": wd,
                     "cid": cid,
@@ -612,10 +619,10 @@ class MeituanCrawler(object):
                     log.eye_catching_logging("sleep for 0.5s", log.error)
                     time.sleep(0.5)
 
-                    if max_try<=0:
+                    if max_try <= 0:
                         log.eye_catching_logging('address get failed with max_try times', log.error)
                         return False
-                    return _try(wd,cid,rn, max_try-1)
+                    return _try(wd, cid, rn, max_try - 1)
 
             @lru_cache()
             def _rel(wd, cid, rn):
@@ -646,11 +653,12 @@ class MeituanCrawler(object):
 
                 if rn_l > rn_h:
                     return -1
+
         bdmap_find_address_by_name_api = 'http://map.baidu.com/su'
         # note: 这个数可能会引起问题，之前65在广东华莱士会出现问题，其他地方不会
         # 采用二分法找到合适的结果数
         result_number = find_res_upper_limit(shop_name, cid_name.id, 0, 130)
-        log.eye_catching_logging('合适的结果数为:%d'%result_number, log.error)
+        log.eye_catching_logging('合适的结果数为:%d' % result_number, log.error)
 
         query = {
             "wd": shop_name,
@@ -711,17 +719,15 @@ class MeituanCrawler(object):
         shops = self.add_lng_lat_by_address(addresses, shop_name)
         # 4. 利用坐标值和地址，通过美团外卖的接口获取该店（所在区域）在美团外卖内部系统内的地理哈希值
         self.fetch_geo_hash_for_shops(shops)
-        # 5. 利用该地理哈希值和商店名称，通过美团的搜索接口尝试获取其店铺网址
-        self.batch_get_url_by_geo_hash_and_name(shops)
-        # 6. 将在美团上未开店的商铺去除
-        shops_exists_in_meituan = self.filter_out_shop_with_no_urls(shops)
-        # 7. 对剩余的url进行去重
-        shops_exists_in_meituan = self.remove_duplicate_urls(shops_exists_in_meituan)
-        # 8. 将所有商店必要的统计信息导入到一个表单内
+        # 5. 利用该地理哈希值和商店名称，通过美团的搜索接口尝试获取其店铺网址，获取其中所有的在美团上开设的该店铺信息
+        shops_exists_in_meituan = self.batch_get_shop_with_url_by_geo_hash_and_name(shops)
+        # 6. 对获取的店铺进行去重（根据URL）
+        shops_exists_in_meituan_unique = self.remove_duplicate_shops(shops_exists_in_meituan)
+        # 7. 将所有商店必要的统计信息导入到一个表单内
         shops_info_sheet_name = '{city_name}_{shop_name}'.format(city_name=city_name, shop_name=shop_name)
-        self.export_shops_info_to_xls_sheet(shops_exists_in_meituan, self.get_sheet_name(shops_info_sheet_name))
+        self.export_shops_info_to_xls_sheet(shops_exists_in_meituan_unique, self.get_sheet_name(shops_info_sheet_name))
 
-        return shops_exists_in_meituan
+        return shops_exists_in_meituan_unique
 
     def run_crawler_and_export(self, city_name, shop_name):
         # 获取在该城市范围内该商店在美团上所开设的所有店铺的网址等信息
@@ -789,7 +795,7 @@ if __name__ == '__main__':
     # timer(main)
     res = session.get('http://waimai.meituan.com/restaurant/144768513906661269')
     soup = BeautifulSoup(res.text, 'lxml')
-    details_list = soup.select('div.details .list .na')[0] # type: Tag
+    details_list = soup.select('div.details .list .na')[0]  # type: Tag
     shop_name = details_list.find_all('span')[0].string.strip()
     print(details_list.prettify())
     print(shop_name)
