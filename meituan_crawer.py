@@ -279,7 +279,6 @@ class MeituanCrawler(object):
             res = session.get(shop_url)
 
             soup = BeautifulSoup(res.text, 'lxml')
-            logging.critical(soup.prettify())
 
             # 获取基本信息
             food_data_nodes = soup.find_all('script', {'type': 'text/template', 'id': re.compile('foodcontext-\d+')})
