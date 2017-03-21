@@ -349,7 +349,11 @@ class MeituanCrawler(object):
             if parsed_info:
                 parsed_infos.append(parsed_info)
 
-            shop_unique_name = '{shop_address}'.format(shop_name=name,
+            # 从详情页中获取商铺名
+            details_list = soup.select('div.details .list .na')[0]  # type: Tag
+            shop_name = details_list.find_all('span')[0].string.strip()
+
+            shop_unique_name = '{shop_name}@{shop_address}'.format(shop_name=shop_name,
                                                        shop_address=address.replace('$', ''))
             if idx > 0:
                 shop_unique_name += '_{index}'.format(index=idx)
@@ -785,8 +789,10 @@ if __name__ == '__main__':
     # timer(main)
     res = session.get('http://waimai.meituan.com/restaurant/144768513906661269')
     soup = BeautifulSoup(res.text, 'lxml')
-    logging.critical(soup.prettify())
-    logging.critical(res.cookies)
+    details_list = soup.select('div.details .list .na')[0] # type: Tag
+    shop_name = details_list.find_all('span')[0].string.strip()
+    print(details_list.prettify())
+    print(shop_name)
 
 
     # name = get_sheet_name('杭州\?%$123as-.,[]市江干区沙县小吃(中共闸弄口街道工作委员会西北)179_商品信息')
