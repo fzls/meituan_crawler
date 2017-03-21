@@ -405,7 +405,7 @@ class MeituanCrawler(object):
     def is_the_shop_we_want(self, res_name, shop_name):
         return shop_name in res_name
 
-    def parse_shops_and_export(self, shops: list):
+    def parse_shops_and_export(self, shops: list, shop_name:str):
         if len(shops) == 0:
             log.eye_catching_logging('商家列表为空')
             return
@@ -414,7 +414,7 @@ class MeituanCrawler(object):
         parsed_infos = {}
         for shop in shops:
             for idx, parsed_info in enumerate(self.parse_shop_page(shop)):
-                shop_unique_name = shop.address.replace('$', '')
+                shop_unique_name = '{name}@{address}'.format(name=shop.name, address=shop.address.replace('$', ''))
                 if idx > 0:
                     shop_unique_name += '_{index}'.format(index=idx)
 
@@ -423,7 +423,6 @@ class MeituanCrawler(object):
         # log.json_debug(parsed_infos)
 
         # 将本次获取的商家信息导出到单个汇总的表单
-        shop_name = shops[0].name
         filepath = '{shop_name}_商品信息_汇总'.format(shop_name=shop_name)
         self.export_all_shops(parsed_infos, self.get_sheet_name(filepath))
 
@@ -734,7 +733,7 @@ class MeituanCrawler(object):
         shops_exists_in_meituan = self.collect_shop_urls(city_name, shop_name)
 
         # 对这些找到的店铺抓取其页面数据
-        parse_shops_info = self.parse_shops_and_export(shops_exists_in_meituan)
+        parse_shops_info = self.parse_shops_and_export(shops_exists_in_meituan, shop_name)
 
     def run(self, city_name='湛江', shop_name='美优乐'):
         """
