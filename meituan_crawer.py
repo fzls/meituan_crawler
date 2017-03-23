@@ -353,6 +353,10 @@ class MeituanCrawler(object):
             details_list = soup.select('div.details .list .na')[0]  # type: Tag
             shop_name = details_list.find_all('span')[0].string.strip()
 
+            # TODO: 从详情页中获取商铺地址
+            # shop_address_div = soup.select('div.rest-info-thirdpart')[0]
+            # shop_address = shop_address_div.string.strip().replace('商家地址：', '')
+
             shop_unique_name = '{shop_name}@{shop_address}'.format(shop_name=shop_name,
                                                                    shop_address=address.replace('$', ''))
             if idx > 0:
@@ -666,11 +670,18 @@ class MeituanCrawler(object):
             "type": "0",
         }
 
-        res = session.get(bdmap_find_address_by_name_api, params=query)
+        while True:
+            res = session.get(bdmap_find_address_by_name_api, params=query)
 
-        # print(test.status_code)
-        res.encoding = 'utf-8'
-        json_res = res.json()
+            # print(test.status_code)
+            res.encoding = 'utf-8'
+            try:
+                json_res = res.json()
+                break
+            except Exception as e:
+                log.eye_catching_logging(str(e), log.error)
+                log.eye_catching_logging("sleep for 0.5s", log.error)
+                time.sleep(0.5)
 
         addresses = []
         for address in json_res['s']:
@@ -792,12 +803,17 @@ def main():
 
 if __name__ == '__main__':
     # timer(main)
-    res = session.get('http://waimai.meituan.com/restaurant/144768513906661269')
+    res = session.get('http://waimai.meituan.com/restaurant/144782111773191110')
     soup = BeautifulSoup(res.text, 'lxml')
-    details_list = soup.select('div.details .list .na')[0]  # type: Tag
-    shop_name = details_list.find_all('span')[0].string.strip()
-    print(details_list.prettify())
-    print(shop_name)
+    # details_list = soup.select('div.details .list .na')[0]  # type: # Tag
+    # shop_name = details_list.find_all('span')[0].string.strip()
+    shop_address_div = soup.select('div.rest-info-thirdpart')[0]
+    shop_address = shop_address_div.string.strip().replace('商家地址：', '')
+    # print(soup.prettify())
+    # print(details_list.prettify())
+    # print(shop_name)
+    print(shop_address_div.string.strip().replace('商家地址：', ''))
+
 
 
     # name = get_sheet_name('杭州\?%$123as-.,[]市江干区沙县小吃(中共闸弄口街道工作委员会西北)179_商品信息')
