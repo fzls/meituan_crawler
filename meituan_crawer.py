@@ -725,6 +725,13 @@ class MeituanCrawler(object):
         cid_name = self.get_city_id_and_name(city_name)
         # 2. 利用百度地图接口找到该城市存在的该品牌的店的地址作为初始结果集
         addresses = self.find_possiable_addresses(cid_name, shop_name)
+
+        shops_exists_in_meituan_unique = self.fetch_shop_url_by_address(addresses, city_name, shop_name)
+
+        return shops_exists_in_meituan_unique
+
+
+    def fetch_shop_url_by_address(self, addresses, city_name, shop_name):
         # 3. 利用百度的坐标反查接口获取这些地址对应的坐标值
         shops = self.add_lng_lat_by_address(addresses, shop_name)
         # 4. 利用坐标值和地址，通过美团外卖的接口获取该店（所在区域）在美团外卖内部系统内的地理哈希值
@@ -736,8 +743,16 @@ class MeituanCrawler(object):
         # 7. 将所有商店必要的统计信息导入到一个表单内
         shops_info_sheet_name = '{city_name}_{shop_name}'.format(city_name=city_name, shop_name=shop_name)
         self.export_shops_info_to_xls_sheet(shops_exists_in_meituan_unique, self.get_sheet_name(shops_info_sheet_name))
-
         return shops_exists_in_meituan_unique
+
+    def run_crawler_and_export_with_shop_urls(self, urls, city_name, shop_name):
+        # 根据url获取店铺地址
+        addresses = self.get_addresses_by_urls(urls)
+        # 根据地址获取店铺相关信息及url
+        shops_exists_in_meituan = self.fetch_shop_url_by_address(addresses, city_name, shop_name)
+
+        parse_shops_info = self.parse_shops_and_export(shops_exists_in_meituan, '')
+
 
     def run_crawler_and_export(self, city_name, shop_name):
         # 获取在该城市范围内该商店在美团上所开设的所有店铺的网址等信息
@@ -746,7 +761,7 @@ class MeituanCrawler(object):
         # 对这些找到的店铺抓取其页面数据
         parse_shops_info = self.parse_shops_and_export(shops_exists_in_meituan, shop_name)
 
-    def run(self, city_name='湛江', shop_name='美优乐'):
+    def run(self, city_name='湛江', shop_name='美优乐',ids=''):
         """
         根据输入的城市名和商店名，找到该城市内该商店在美团所开设的所有店铺的商品的信息列表，并导出为xls文件
         :return:
@@ -760,7 +775,15 @@ class MeituanCrawler(object):
         # shop_name = '美优乐'
 
         log.eye_catching_logging('开始抓取[{city}]:[{shop}]'.format(city=city_name, shop=shop_name), log.error)
-        self.run_crawler_and_export(city_name.strip(), shop_name.strip())
+        if ids:
+            shop_url = 'http://waimai.meituan.com/restaurant/{id}'
+            ids = ids.split(',')
+            urls = list(map(lambda x: shop_url.format(id=x.strip()), ids))
+
+            self.run_crawler_and_export_with_shop_urls(urls, city_name.strip(), shop_name.strip())
+        else:
+            self.run_crawler_and_export(city_name.strip(), shop_name.strip())
+
         log.eye_catching_logging('完成抓取[{city}]:[{shop}]'.format(city=city_name, shop=shop_name), log.error)
 
         # TODO: 设置不同类型的格式，以及每个列对应的类型
@@ -784,6 +807,21 @@ class MeituanCrawler(object):
 
         return res
 
+    def get_addresses_by_urls(self, urls:list):
+        addresses = []
+        # 从每个页面中抓取地址信息，并返回
+        for shop_url in urls:
+            res = session.get(shop_url)
+
+            soup = BeautifulSoup(res.text, 'lxml')
+
+            shop_address_div = soup.select('div.rest-info-thirdpart')[0]
+            shop_address = shop_address_div.string.strip().replace('商家地址：', '')
+
+            addresses.append(shop_address)
+
+        return addresses
+
 
 def timer(func, *args, **kwargs):
     ran_time = timeit.timeit(func, number=1)
@@ -802,17 +840,32 @@ def main():
 
 
 if __name__ == '__main__':
-    # timer(main)
-    res = session.get('http://waimai.meituan.com/restaurant/144782111773191110')
-    soup = BeautifulSoup(res.text, 'lxml')
-    # details_list = soup.select('div.details .list .na')[0]  # type: # Tag
-    # shop_name = details_list.find_all('span')[0].string.strip()
-    shop_address_div = soup.select('div.rest-info-thirdpart')[0]
-    shop_address = shop_address_div.string.strip().replace('商家地址：', '')
-    # print(soup.prettify())
-    # print(details_list.prettify())
-    # print(shop_name)
-    print(shop_address_div.string.strip().replace('商家地址：', ''))
+    timer(main)
+
+
+    # res = MeituanCrawler().get_addresses_by_urls([
+    #     'http://waimai.meituan.com/restaurant/144801610927184420',
+    #     'http://waimai.meituan.com/restaurant/144835588413501509'
+    # ])
+    #
+    # for s in res:
+    #     print(s)
+    #
+    # res = MeituanCrawler().add_lng_lat_by_address(res)
+    #
+    # for s in res:
+    #     print(s)
+
+    # res = session.get('http://waimai.meituan.com/restaurant/144782111773191110')
+    # soup = BeautifulSoup(res.text, 'lxml')
+    # # details_list = soup.select('div.details .list .na')[0]  # type: # Tag
+    # # shop_name = details_list.find_all('span')[0].string.strip()
+    # shop_address_div = soup.select('div.rest-info-thirdpart')[0]
+    # shop_address = shop_address_div.string.strip().replace('商家地址：', '')
+    # # print(soup.prettify())
+    # # print(details_list.prettify())
+    # # print(shop_name)
+    # print(shop_address_div.string.strip().replace('商家地址：', ''))
 
 
 
