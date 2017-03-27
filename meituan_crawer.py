@@ -237,6 +237,7 @@ class Shop(object):
 
 class MeituanCrawler(object):
     def __init__(self):
+        self.shop_index = 0
         self.wb = xlwt.Workbook(encoding='utf-8')
 
     def export_shop_to_xls_sheet(self, parsed_info, sheet_name):
@@ -357,8 +358,10 @@ class MeituanCrawler(object):
             # shop_address_div = soup.select('div.rest-info-thirdpart')[0]
             # shop_address = shop_address_div.string.strip().replace('商家地址：', '')
 
-            shop_unique_name = '{shop_name}@{shop_address}'.format(shop_name=shop_name,
-                                                                   shop_address=address.replace('$', ''))
+            self.shop_index+=1
+            shop_unique_name = '{idx}_{shop_name}@{shop_address}'.format(idx = self.shop_index,
+                                                                         shop_name=shop_name,
+                                                                         shop_address=address.replace('$', ''))
             if idx > 0:
                 shop_unique_name += '_{index}'.format(index=idx)
             shop_unique_name += '_商品信息'
@@ -409,7 +412,7 @@ class MeituanCrawler(object):
     def is_the_shop_we_want(self, res_name, shop_name):
         return shop_name in res_name
 
-    def parse_shops_and_export(self, shops: list, shop_name:str):
+    def parse_shops_and_export(self, shops: list, shop_name: str):
         if len(shops) == 0:
             log.eye_catching_logging('商家列表为空')
             return
@@ -503,8 +506,8 @@ class MeituanCrawler(object):
             res_name = res_li.find('p', {'class': 'name'}).string.replace('\n', '').strip()
             res_path = res_li.find('a')['href']
 
-            res_total = self.get_striped_str(res_li.find('span', {'class': 'total'})).replace('月售','')
-            res_start_price = self.get_striped_str(res_li.find('span', {'class': 'start-price'})).replace('起送','')
+            res_total = self.get_striped_str(res_li.find('span', {'class': 'total'})).replace('月售', '')
+            res_start_price = self.get_striped_str(res_li.find('span', {'class': 'start-price'})).replace('起送', '')
 
             res_send_price = self.get_striped_str(res_li.find('span', {'class': 'send-price'})).replace('配送费', '')
             res_send_time = self.get_striped_str(res_li.find('p', {'class': 'send-time'})).replace('平均送餐时间：', '')
@@ -520,7 +523,7 @@ class MeituanCrawler(object):
                 if res_path:
                     shop_url = '{host}{path}'.format(host=meituan_waimai_url, path=res_path)
 
-                    shop_in_res = Shop(res_name, shop.address,shop.lat, shop.lng,shop.geo_hash)
+                    shop_in_res = Shop(res_name, shop.address, shop.lat, shop.lng, shop.geo_hash)
                     # TODO: add elems
                     shop_in_res.url = shop_url
                     shop_in_res.month_sale_count = res_total
@@ -730,7 +733,6 @@ class MeituanCrawler(object):
 
         return shops_exists_in_meituan_unique
 
-
     def fetch_shop_url_by_address(self, addresses, city_name, shop_name):
         # 3. 利用百度的坐标反查接口获取这些地址对应的坐标值
         shops = self.add_lng_lat_by_address(addresses, shop_name)
@@ -753,7 +755,6 @@ class MeituanCrawler(object):
 
         parse_shops_info = self.parse_shops_and_export(shops_exists_in_meituan, '')
 
-
     def run_crawler_and_export(self, city_name, shop_name):
         # 获取在该城市范围内该商店在美团上所开设的所有店铺的网址等信息
         shops_exists_in_meituan = self.collect_shop_urls(city_name, shop_name)
@@ -761,7 +762,7 @@ class MeituanCrawler(object):
         # 对这些找到的店铺抓取其页面数据
         parse_shops_info = self.parse_shops_and_export(shops_exists_in_meituan, shop_name)
 
-    def run(self, city_name='湛江', shop_name='美优乐',ids=''):
+    def run(self, city_name='湛江', shop_name='美优乐', ids=''):
         """
         根据输入的城市名和商店名，找到该城市内该商店在美团所开设的所有店铺的商品的信息列表，并导出为xls文件
         :return:
@@ -807,7 +808,7 @@ class MeituanCrawler(object):
 
         return res
 
-    def get_addresses_by_urls(self, urls:list):
+    def get_addresses_by_urls(self, urls: list):
         addresses = []
         # 从每个页面中抓取地址信息，并返回
         for shop_url in urls:
