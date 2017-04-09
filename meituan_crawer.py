@@ -7,6 +7,7 @@ import logging
 import re
 import time
 import timeit
+import types
 from random import randint
 from urllib.parse import parse_qs, urlparse, urlencode
 
@@ -358,8 +359,8 @@ class MeituanCrawler(object):
             # shop_address_div = soup.select('div.rest-info-thirdpart')[0]
             # shop_address = shop_address_div.string.strip().replace('商家地址：', '')
 
-            self.shop_index+=1
-            shop_unique_name = '{idx}_{shop_name}@{shop_address}'.format(idx = self.shop_index,
+            self.shop_index += 1
+            shop_unique_name = '{idx}_{shop_name}@{shop_address}'.format(idx=self.shop_index,
                                                                          shop_name=shop_name,
                                                                          shop_address=address.replace('$', ''))
             if idx > 0:
@@ -769,8 +770,7 @@ class MeituanCrawler(object):
         """
         # 1. 获取url
         # 2. 爬取内容
-        #  3. 开发前端: 试试用Python写GUI
-        # TODO:  4. 添加缓存机制（json, sqlite, yaml)
+        # 3. 开发前端: 试试用Python写GUI
         ## 从用户获取城市和商店名
         # city_name = '湛江'
         # shop_name = '美优乐'
@@ -823,6 +823,327 @@ class MeituanCrawler(object):
 
         return addresses
 
+    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    def export_shop_to_xls_eleme(self, shops):
+        wb = xlwt.Workbook(encoding='utf-8')
+
+        if len(shops) == 0:
+            return wb
+
+        def patch_with_helper(worksheet):
+            # 添加辅助方法
+            def write_float(self, row, col, val):
+                if val is None:
+                    val = 0.0
+                self.write(row, col, float(val), type_fmt['float'])
+
+            def write_int(self, row, col, val):
+                if val is None:
+                    val = 0
+                self.write(row, col, int(val), type_fmt['int'])
+
+            def write_bool(self, row, col, val):
+                if val is None:
+                    val = False
+                self.write(row, col, bool(val), type_fmt['bool'])
+
+            worksheet.write_float = types.MethodType(write_float, worksheet)
+            worksheet.write_int = types.MethodType(write_int, worksheet)
+            worksheet.write_bool = types.MethodType(write_bool, worksheet)
+
+            return worksheet
+
+        # -------------------商家汇总信息--------------------------------
+        ws = wb.add_sheet('商家汇总信息')  # type: xlwt.Worksheet
+        ws = patch_with_helper(ws)
+
+        # 写入heading
+        ws.write(0, 0, '商铺名')
+        ws.write(0, 1, '地址')
+        ws.write(0, 2, '纬度')
+        ws.write(0, 3, '经度')
+        ws.write(0, 4, '月售单数')
+        ws.write(0, 5, '起送价')
+        ws.write(0, 6, '费送费')
+        ws.write(0, 7, '平均送达时间')
+        ws.write(0, 8, '评分')
+        ws.write(0, 9, '评分数')
+        ws.write(0, 10, '评分高于周边商家比例')
+        ws.write(0, 11, '好评率')
+        ws.write(0, 12, '菜品评分')
+        ws.write(0, 13, '服务态度评分')
+        ws.write(0, 14, '店铺网址')
+
+        # 写入记录
+        row = 0
+        for shop in shops:  # type: dict
+            row += 1
+
+            ws.write(row, 0, shop.get('name'))
+            ws.write(row, 1, shop.get('address'))
+            ws.write_float(row, 2, shop.get('latitude'))
+            ws.write_float(row, 3, shop.get('longitude'))
+            ws.write_int(row, 4, shop.get('recent_order_num'))
+            ws.write_int(row, 5, shop.get('float_minimum_order_amount'))
+            ws.write_int(row, 6, shop.get('float_delivery_fee'))
+            ws.write_int(row, 7, shop.get('order_lead_time'))
+            ws.write_float(row, 8, shop.get('rating'))
+            ws.write_int(row, 9, shop.get('rating_count'))
+            ws.write_float(row, 10, shop.get('compare_rating'))
+            ws.write_float(row, 11, shop.get('positive_rating'))
+            ws.write_float(row, 12, shop.get('food_score'))
+            ws.write_float(row, 13, shop.get('service_score'))
+            ws.write(row, 14, shop.get('url'))
+
+        # -------------------各家店商品信息--------------------------------
+        for idx, shop in enumerate(shops):
+            ws = wb.add_sheet(self.get_sheet_name('{index}_{name}@{address}'.format(index=idx, name=shop.get('name'),
+                                                                address=shop.get('address'))))  # type: xlwt.Worksheet
+            ws = patch_with_helper(ws)
+
+            menu_for_shops_heading = [
+                'original_price',
+                'price',
+                'item_id',
+                'name',
+                'sold_out',
+                'month_sales',
+                'packing_fee',
+                'rating',
+                'rating_count',
+                'description'
+            ]
+            # 写入heading
+            ws.write(0, 0, '原价')
+            ws.write(0, 1, '现价')
+            ws.write(0, 2, 'id')
+            ws.write(0, 3, '名称')
+            ws.write(0, 4, '售罄')
+            ws.write(0, 5, '月销量')
+            ws.write(0, 6, '打包费')
+            ws.write(0, 7, '评分')
+            ws.write(0, 8, '评分数')
+            ws.write(0, 9, '描述')
+            ws.write(0, 10, '规格')
+
+            # 写入记录
+            row = 0
+            for sub_menu in shop.get('menu'):  # type: dict
+                for food in sub_menu.get('foods'):  # type: dict
+                    for specfood in food.get('specfoods'):  # type: dict
+                        row += 1
+
+                        ws.write_float(row, 0, specfood.get('original_price'))
+                        ws.write_float(row, 1, specfood.get('price'))
+                        ws.write_int(row, 2, specfood.get('food_id'))
+                        ws.write(row, 3, specfood.get('name'))
+                        ws.write_bool(row, 4, specfood.get('sold_out'))
+                        ws.write_int(row, 5, specfood.get('recent_popularity'))
+                        ws.write_float(row, 6, specfood.get('packing_fee'))
+                        ws.write_float(row, 7, food.get('rating'))
+                        ws.write_int(row, 8, food.get('rating_count'))
+                        ws.write(row, 9, food.get('description'))
+                        ws.write(row, 10, specfood.get('specs'))
+
+        # -------------------各菜品信息（总计）--------------------------------
+        # ---计算统计信息
+        food_infos = self.compute_food_statistics(shops)# -------导出统计信息
+        ws = wb.add_sheet('菜品统计信息')  # type: xlwt.Worksheet
+        ws = patch_with_helper(ws)
+
+        # 写入heading
+        ws.write(0, 0, '名称')
+        ws.write(0, 1, '总销量')
+        ws.write(0, 2, '总销售额')
+        ws.write(0, 3, '平均销量')
+        ws.write(0, 4, '平均销售额')
+        ws.write(0, 5, '平均价格')
+        ws.write(0, 6, '各门店总计展现次数（每个规格作为计数单位）')
+
+        # 写入记录
+        row = 0
+        for food_info in food_infos:  # type: dict
+            row += 1
+
+            ws.write(row, 0, food_info.get('name'))
+            ws.write_int(row, 1, food_info.get('total_sold_count'))
+            ws.write_float(row, 2, food_info.get('total_sold_money'))
+            ws.write_float(row, 3, food_info.get('average_sold_count'))
+            ws.write_float(row, 4, food_info.get('average_sold_money'))
+            ws.write_float(row, 5, food_info.get('average_price'))
+            ws.write_int(row, 6, food_info.get('occur_times'))
+
+        return wb
+        pass
+
+    def compute_food_statistics(self, shops):
+        foods = []
+        for shop in shops:  # type: dict
+            for sub_menu in shop.get('menu'):  # type: dict
+                for food in sub_menu.get('foods'):  # type: dict
+                    for specfood in food.get('specfoods'):  # type: dict
+                        foods.append({
+                            'name': specfood.get('name'),
+                            'price': float(specfood.get('price')),
+                            'sold_count': int(specfood.get('recent_popularity')),
+                            'food_id': int(specfood.get('food_id')),
+                            'item_id': int(food.get('item_id'))
+                        })
+
+        import itertools
+        from operator import itemgetter
+
+        food_infos = []
+        foods.sort(key=itemgetter("name"))
+        for name, foods_with_same_name in itertools.groupby(foods, lambda food: food['name']):
+            foods_with_same_name = list(foods_with_same_name)
+            total_sold_count = sum([food['sold_count'] for food in foods_with_same_name])
+            total_sold_money = sum([food['sold_count'] * food['price'] for food in foods_with_same_name])
+            total_count = len(foods_with_same_name)
+
+            food_infos.append({
+                "name": name,
+                "total_sold_count": total_sold_count,
+                "total_sold_money": total_sold_money,
+                "average_sold_count": total_sold_count / total_count,
+                "average_sold_money": total_sold_money / total_count,
+                "average_price": sum([food['price'] for food in foods_with_same_name]) / total_count,
+                "occur_times": total_count,
+            })
+
+        # food_infos.sort(key=itemgetter(""))
+
+        return food_infos
+
+    def run_eleme(self, city_name, brand_name):
+        cid_name = self.get_city_id_and_name(city_name)
+        addresses = self.find_possiable_addresses(cid_name, brand_name)
+
+        shops = self.add_lng_lat_by_address(addresses, brand_name)
+
+        # 根据坐标获取商铺url
+        shops_exists_in_eleme = self.batch_get_shop_with_url_by_lat_and_lng(shops, brand_name)
+
+        # 移除重复结果
+        shops_exists_in_eleme_unique = self.remove_duplicate_shops_eleme(shops_exists_in_eleme)
+
+        # 解析每个页面，将相关信息添加到shop中
+        self.parse_shops_eleme(shops_exists_in_eleme_unique, brand_name)
+
+        # 导出结果
+
+        from pypinyin import lazy_pinyin
+        filename = ''.join(lazy_pinyin('{current_time}_{location}_{shop}.xls'.format(
+            current_time=time.strftime(DATE_TIME_FORMAT),
+            location=city_name,
+            shop=brand_name
+        )))
+
+        return [self.export_shop_to_xls_eleme(shops_exists_in_eleme_unique), filename]
+        pass
+
+    def batch_get_shop_with_url_by_lat_and_lng(self, shops, brand_name):
+        # https://mainsite-restapi.ele.me/shopping/restaurants/search
+        # extras[]:activity
+        # keyword:外婆家 +++++++++++++
+        # latitude:30.262373    +++++++++++++
+        # limit:100
+        # longitude:120.12105 +++++++++++++
+        # offset:0
+        # terminal:web
+
+        # ?extras%5B%5D=activity&keyword=%E5%A4%96%E5%A9%86%E5%AE%B6&latitude=30.262373&limit=100&longitude=120.12105&offset=0&terminal=web
+
+        # result => restaurant_with_foods->[0,1,2..n]->restaurant->id
+        # url => https://www.ele.me/shop/{id}
+        api = 'https://mainsite-restapi.ele.me/shopping/restaurants/search'
+        query = {
+            'extras[]': 'activity',
+            'limit': 100,
+            'offset': 0,
+            'terminal': 'web',
+        }
+
+        shops_with_url = []
+        for shop in shops:
+            query['keyword'] = brand_name
+            query['latitude'] = shop.lat
+            query['longitude'] = shop.lng
+
+            res = requests.get(api, params=query)
+            res = res.json()
+            ids = set()
+            for restaurant in res['restaurant_with_foods']:
+                ids.add(restaurant['restaurant']['id'])
+
+            for id in ids:
+                shops_with_url.append({
+                    'brand': brand_name,
+                    'latitude': shop.lat,
+                    'longitude': shop.lng,
+                    'id': id,
+                    'url': 'https://www.ele.me/shop/{id}'.format(id=id)
+                })
+
+        return shops_with_url
+        pass
+
+    def remove_duplicate_shops_eleme(self, shops):
+        unique_shops = []
+        visited_urls = {}
+
+        for shop in shops:
+            if not visited_urls.get(shop['url']):
+                unique_shops.append(shop)
+                visited_urls[shop['url']] = True
+
+        return unique_shops
+        pass
+
+    def parse_shops_eleme(self, shops_exists_in_eleme_unique, brand_name):
+        for shop in shops_exists_in_eleme_unique:  # type: dict
+            # 商家评价信息： https://mainsite-restapi.ele.me/ugc/v1/restaurants/1387370/rating_scores?latitude=30.262373&longitude=120.12105
+            rating_api = 'https://mainsite-restapi.ele.me/ugc/v1/restaurants/{id}/rating_scores'.format(id=shop['id'])
+            query = {
+                'latitude': shop['latitude'],
+                'longitude': shop['longitude']
+            }
+            shop_ratings = requests.get(rating_api, params=query).json()
+            shop.update(shop_ratings)
+
+            # 菜品信息： https://mainsite-restapi.ele.me/shopping/v2/menu?restaurant_id=1387370
+            menu_api = 'https://mainsite-restapi.ele.me/shopping/v2/menu'
+            query = {
+                'restaurant_id': shop['id']
+            }
+            while True:
+                menu = requests.get(menu_api, query).json()
+                if type(menu) is list:
+                    # 正常情况下返回list
+                    break
+                else:
+                    # 若返回结果为dict，则说明操作过频繁，休息一会儿
+                    # {'name': 'SERVICE_REJECTED', 'message': '操作太频繁啦，请休息一下再试。'}
+                    time.sleep(1)
+                    pass
+            shop['menu'] = menu
+
+            # 商家信息：https://mainsite-restapi.ele.me/shopping/restaurant/1387370?extras%5B%5D=activity&extras%5B%5D=license&extras%5B%5D=identification&extras%5B%5D=albums&extras%5B%5D=flavors&latitude=30.262373&longitude=120.12105
+            info_api = 'https://mainsite-restapi.ele.me/shopping/restaurant/{id}'.format(id=shop['id'])
+            query = {
+                'extras[]': [
+                    'activity',
+                    'license',
+                    'identification',
+                    'albums',
+                    'flavors',
+                ],
+                'latitude': shop['latitude'],
+                'longitude': shop['longitude']
+            }
+            shop_info = requests.get(info_api, query).json()
+            shop.update(shop_info)
+
 
 def timer(func, *args, **kwargs):
     ran_time = timeit.timeit(func, number=1)
@@ -831,85 +1152,51 @@ def timer(func, *args, **kwargs):
 
 
 def main():
+    # TODO:
+    # 1. 移除Shop等类，  只采用dict
+    # 2. 将导出步骤分离出来
+    # 3. 规范log
+
+
     # city = input('城市名: ')
     # name = input('商家名: ')
     #
-    # wb, saved_file = run(city, name)
     crawler = MeituanCrawler()
-    wb, saved_file = crawler.run()
+    # 将两种整合到一起
+    wb, saved_file = crawler.run_eleme('杭州', '外婆家')
     wb.save(saved_file)
 
 
 if __name__ == '__main__':
+    # FIXME: 美团的./backend/meituan_crawer.py in parse_urls line:354 进行屏蔽（404）休眠后重试
+    # TODO: 提取类（url_fetcher, page_parser, item_exporter)，并设计各类职责，以及类的结构（继承与接口）
+    # TODO: 提取各种设置到单独的类中
+    # TODO：添加前端接口
     timer(main)
-
-
-    # res = MeituanCrawler().get_addresses_by_urls([
-    #     'http://waimai.meituan.com/restaurant/144801610927184420',
-    #     'http://waimai.meituan.com/restaurant/144835588413501509'
-    # ])
+    # def patch_with_helper(worksheet):
+    #     # 添加辅助方法
+    #     def write_float(self, row, col, val):
+    #         self.write(row, col, float(val), type_fmt['float'])
     #
-    # for s in res:
-    #     print(s)
+    #     def write_int(self, row, col, val):
+    #         self.write(row, col, int(val), type_fmt['int'])
     #
-    # res = MeituanCrawler().add_lng_lat_by_address(res)
+    #     def write_bool(self, row, col, val):
+    #         self.write(row, col, bool(val), type_fmt['bool'])
     #
-    # for s in res:
-    #     print(s)
-
-    # res = session.get('http://waimai.meituan.com/restaurant/144782111773191110')
-    # soup = BeautifulSoup(res.text, 'lxml')
-    # # details_list = soup.select('div.details .list .na')[0]  # type: # Tag
-    # # shop_name = details_list.find_all('span')[0].string.strip()
-    # shop_address_div = soup.select('div.rest-info-thirdpart')[0]
-    # shop_address = shop_address_div.string.strip().replace('商家地址：', '')
-    # # print(soup.prettify())
-    # # print(details_list.prettify())
-    # # print(shop_name)
-    # print(shop_address_div.string.strip().replace('商家地址：', ''))
-
-
-
-    # name = get_sheet_name('杭州\?%$123as-.,[]市江干区沙县小吃(中共闸弄口街道工作委员会西北)179_商品信息')
-    # print(name)
-    # wb.add_sheet(name)
-
-
-    # import pickle
-    # s = Shop('美优乐', '湛江市$廉江市$$美优乐(安铺店)', '21.460463270004844', '110.03258267897824', 'w7y4pfg23023', [
-    #     'http://waimai.meituan.com/restaurant/144833350729852647'
-    # ])
-    # # with open('cache.pickle', 'wb') as save:
-    # #     pickle.dump(s, save)
+    #     worksheet.write_float = types.MethodType(write_float, worksheet)
+    #     worksheet.write_int = types.MethodType(write_int, worksheet)
+    #     worksheet.write_bool = types.MethodType(write_bool, worksheet)
     #
-    # with open('cache.pickle', 'rb') as save:
-    #     s = pickle.load(save)
-    #     print(type(s))
-    #     print(s)
-    # wb.add_sheet('这是一个_(测试)）（-')
-    # timer(lambda:test_cache(10000000))
-    # timer(lambda:test_cache(10000000))
-    # timer(lambda:test_cache(10000000))
-    # timer(lambda:test_cache(10000000))
+    #
+    # wb = xlwt.Workbook(encoding='utf-8')
+    #
+    # ws = wb.add_sheet('商家汇总信息')  # type: xlwt.Worksheet
+    # patch_with_helper(ws)
+    #
+    # ws.write_float(0,0,'122.321312')
+    # ws.write_int(0,1,'1231')
+    #
+    # wb.save('test.xls')
 
-    #
-    # test_get_shop_in_search_result()
-
-    #
-    # parse_shops([Shop('美优乐', '湛江市$廉江市$$美优乐(安铺店)', '21.460463270004844', '110.03258267897824', 'w7y4pfg23023', [
-    #     'http://waimai.meituan.com/restaurant/144833350729852647'
-    # ])])
-
-    # url = 'http://waimai.meituan.com/search/w7whgwwngrrc/rt'
-    # params = {
-    #     'keyword': '美优乐',
-    #     'p2': 'test'
-    # }
-    # print(urlencode(params))
-    # get_url_by_geo_hash_and_name(
-    #     Shop('美优乐', '湛江市$廉江市$$美优乐(安铺店)', '21.460463270004844', '110.03258267897824', 'w7y4pfg23023'))
-    #
-    # meituan_search_api = 'http://waimai.meituan.com/search/{geo_hash}/rt?keyword={shop_name}'.format(geo_hash=123,
-    #                                                                                                  shop_name=4213)
-    #
-    # print(meituan_search_api)
+    pass
