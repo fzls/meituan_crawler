@@ -3,8 +3,9 @@
 
 import inspect
 import json
-import logging
+import logging.handlers
 import re
+import sys
 import time
 import timeit
 import types
@@ -13,6 +14,7 @@ from urllib.parse import parse_qs, urlparse, urlencode
 
 import requests
 import xlwt
+from pypinyin import lazy_pinyin
 
 ezxf = xlwt.easyxf
 
@@ -22,10 +24,20 @@ from bs4 import BeautifulSoup, Tag
 # 设置时间格式
 DATE_TIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
 
-# logging.basicConfig(format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s')
-logging.basicConfig(format='%(asctime)s %(levelname)s [line:%(lineno)d] %(message)s')
+logFormatter = logging.Formatter('%(threadName)10s %(asctime)s %(levelname)s [line:%(lineno)d] %(message)s')
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+
+fileHandler = logging.handlers.RotatingFileHandler("full_logs.log", maxBytes=(15 * 1024 * 1024), backupCount=7,
+                                                   encoding='utf-8')
+# fileHandler = logging.FileHandler("full_logs.log", encoding='utf-8')
+fileHandler.setFormatter(logFormatter)
+fileHandler.setLevel(logging.DEBUG)
+log.addHandler(fileHandler)
+
+consoleHandler = logging.StreamHandler(sys.stdout)
+consoleHandler.setFormatter(logFormatter)
+consoleHandler.setLevel(logging.ERROR)
+log.addHandler(consoleHandler)
 
 
 def eye_catching_logging(msg='', logger=log.info):
@@ -828,6 +840,7 @@ class MeituanCrawler(object):
         wb = xlwt.Workbook(encoding='utf-8')
 
         if len(shops) == 0:
+            wb.add_sheet('没有找到相关结果')
             return wb
 
         def patch_with_helper(worksheet):
@@ -898,7 +911,8 @@ class MeituanCrawler(object):
         # -------------------各家店商品信息--------------------------------
         for idx, shop in enumerate(shops):
             ws = wb.add_sheet(self.get_sheet_name('{index}_{name}@{address}'.format(index=idx, name=shop.get('name'),
-                                                                address=shop.get('address'))))  # type: xlwt.Worksheet
+                                                                                    address=shop.get(
+                                                                                        'address'))))  # type: xlwt.Worksheet
             ws = patch_with_helper(ws)
 
             menu_for_shops_heading = [
@@ -943,11 +957,11 @@ class MeituanCrawler(object):
                         ws.write_float(row, 7, food.get('rating'))
                         ws.write_int(row, 8, food.get('rating_count'))
                         ws.write(row, 9, food.get('description'))
-                        ws.write(row, 10, specfood.get('specs'))
+                        ws.write(row, 10, str(specfood.get('specs')))
 
         # -------------------各菜品信息（总计）--------------------------------
         # ---计算统计信息
-        food_infos = self.compute_food_statistics(shops)# -------导出统计信息
+        food_infos = self.compute_food_statistics(shops)  # -------导出统计信息
         ws = wb.add_sheet('菜品统计信息')  # type: xlwt.Worksheet
         ws = patch_with_helper(ws)
 
@@ -1015,24 +1029,46 @@ class MeituanCrawler(object):
 
         return food_infos
 
-    def run_eleme(self, city_name, brand_name):
-        cid_name = self.get_city_id_and_name(city_name)
-        addresses = self.find_possiable_addresses(cid_name, brand_name)
+    def run_eleme(self, city_name, brand_name, ids: str):
+        if not ids:
+            # 使用城市和商家名进行搜素
+            cid_name = self.get_city_id_and_name(city_name)
+            ## TODO: 使用采集到的离线商铺信息进行匹配shops_exists_in_eleme_unique
+            addresses = self.find_possiable_addresses(cid_name, brand_name)
 
-        shops = self.add_lng_lat_by_address(addresses, brand_name)
+            shops = self.add_lng_lat_by_address(addresses, brand_name)
 
-        # 根据坐标获取商铺url
-        shops_exists_in_eleme = self.batch_get_shop_with_url_by_lat_and_lng(shops, brand_name)
+            # 根据坐标获取商铺url
+            shops_exists_in_eleme = self.batch_get_shop_with_url_by_lat_and_lng(shops, brand_name)
 
-        # 移除重复结果
-        shops_exists_in_eleme_unique = self.remove_duplicate_shops_eleme(shops_exists_in_eleme)
+            # 移除重复结果
+            shops_exists_in_eleme_unique = self.remove_duplicate_shops_eleme(shops_exists_in_eleme)
+        else:
+            # 使用商家名和ids进行搜索
+            # 根据ids构造shops
+
+            # 'brand': brand_name,
+            # 'latitude': shop.lat,
+            # 'longitude': shop.lng,
+            # 'id': id,
+            # 'url': 'https://www.ele.me/shop/{id}'.format(id=id)
+            shop_url = 'https://www.ele.me/shop/{id}'
+
+            shops_exists_in_eleme_unique = []
+            for id in ids.split(','):
+                shops_exists_in_eleme_unique.append({
+                    'brand': brand_name,
+                    'latitude': 0,
+                    'longitude': 0,
+                    'id': id.strip(),
+                    'url': shop_url.format(id=id.strip())
+                })
 
         # 解析每个页面，将相关信息添加到shop中
         self.parse_shops_eleme(shops_exists_in_eleme_unique, brand_name)
 
         # 导出结果
 
-        from pypinyin import lazy_pinyin
         filename = ''.join(lazy_pinyin('{current_time}_{location}_{shop}.xls'.format(
             current_time=time.strftime(DATE_TIME_FORMAT),
             location=city_name,
@@ -1101,14 +1137,40 @@ class MeituanCrawler(object):
         pass
 
     def parse_shops_eleme(self, shops_exists_in_eleme_unique, brand_name):
+        _session = requests.session()
+
+        from multiprocessing.dummy import Pool as ThreadPool
+        pool = ThreadPool(8)
+
+        # TODO: replace with pool
         for shop in shops_exists_in_eleme_unique:  # type: dict
+            # 商家信息：https://mainsite-restapi.ele.me/shopping/restaurant/1387370?extras%5B%5D=activity&extras%5B%5D=license&extras%5B%5D=identification&extras%5B%5D=albums&extras%5B%5D=flavors&latitude=30.262373&longitude=120.12105
+            # 坐标参数影响 [distance]
+            # NOTE：根据该接口的结果中的latitude和longitude得到其坐标
+            info_api = 'https://mainsite-restapi.ele.me/shopping/restaurant/{id}'.format(id=shop['id'])
+            query = {
+                'extras[]': [
+                    'activity',
+                    'license',
+                    'identification',
+                    'albums',
+                    'flavors',
+                ],
+                'latitude': shop.get('latitude', 0),
+                'longitude': shop.get('longitude', 0)
+            }
+            shop_info = _session.get(info_api, params=query).json()
+            shop.update(shop_info)
+
             # 商家评价信息： https://mainsite-restapi.ele.me/ugc/v1/restaurants/1387370/rating_scores?latitude=30.262373&longitude=120.12105
+            # 坐标影响结果中的  compare_rating 字段
             rating_api = 'https://mainsite-restapi.ele.me/ugc/v1/restaurants/{id}/rating_scores'.format(id=shop['id'])
             query = {
-                'latitude': shop['latitude'],
-                'longitude': shop['longitude']
+                # 若直接输入店铺ids，则无该信息
+                'latitude': shop.get('latitude', 0),
+                'longitude': shop.get('longitude', 0)
             }
-            shop_ratings = requests.get(rating_api, params=query).json()
+            shop_ratings = _session.get(rating_api, params=query).json()
             shop.update(shop_ratings)
 
             # 菜品信息： https://mainsite-restapi.ele.me/shopping/v2/menu?restaurant_id=1387370
@@ -1117,7 +1179,7 @@ class MeituanCrawler(object):
                 'restaurant_id': shop['id']
             }
             while True:
-                menu = requests.get(menu_api, query).json()
+                menu = _session.get(menu_api, params=query).json()
                 if type(menu) is list:
                     # 正常情况下返回list
                     break
@@ -1128,27 +1190,243 @@ class MeituanCrawler(object):
                     pass
             shop['menu'] = menu
 
-            # 商家信息：https://mainsite-restapi.ele.me/shopping/restaurant/1387370?extras%5B%5D=activity&extras%5B%5D=license&extras%5B%5D=identification&extras%5B%5D=albums&extras%5B%5D=flavors&latitude=30.262373&longitude=120.12105
-            info_api = 'https://mainsite-restapi.ele.me/shopping/restaurant/{id}'.format(id=shop['id'])
-            query = {
-                'extras[]': [
-                    'activity',
-                    'license',
-                    'identification',
-                    'albums',
-                    'flavors',
-                ],
-                'latitude': shop['latitude'],
-                'longitude': shop['longitude']
-            }
-            shop_info = requests.get(info_api, query).json()
-            shop.update(shop_info)
-
 
 def timer(func, *args, **kwargs):
     ran_time = timeit.timeit(func, number=1)
 
-    log.info('method %s run %s seconds' % (func, ran_time))
+    log.critical('method %s run %s seconds' % (func, ran_time))
+
+
+ban_cnt = 0
+
+
+def get_eleme_ids():
+    global ban_cnt
+    api = 'https://mainsite-restapi.ele.me/shopping/restaurant/{id}?latitude=30.262373&longitude=120.12105'
+
+    # get start id
+    # 目前观测到的最后一个六位数的id为  580703
+    start_id = get_start_id_from_file()
+
+    id = start_id
+    valid_shops = []
+    start_at = time.time()
+    _session = requests.session()
+
+    from multiprocessing.dummy import Pool as ThreadPool
+    pool = ThreadPool(8)
+
+    def _process_for_id(id):
+        global ban_cnt
+        prefix = '[%9d] : ' % id
+
+        res = _session.get(api.format(id=id)).json()  # type: dict
+
+        # 每次请求相隔0.1s恰好不会被ban, 0.5s屏蔽率为1%
+        # time.sleep(0.05)
+
+        if res.get('name') == 'RESTAURANT_NOT_FOUND':
+            # log.error(prefix + res.get('message'))
+            # time.sleep(0.05)
+            pass
+        elif res.get('name') == 'SYSTEM_ERROR':
+            # log.error(prefix + res.get('message'))
+            pass
+        elif res.get('name') == 'OpenAPI 测试餐厅':
+            pass
+        elif res.get('name') == 'SERVICE_REJECTED':
+            # log.error(prefix + res.get('message')+' :: 休息0.05s')
+            # add mutex
+            ban_cnt += 1
+            # time.sleep(0.05)
+            return _process_for_id(id)
+        else:
+            # http://api.map.baidu.com/geocoder/v2/?output=json&ak=Eze6dPlb3bnUrihPNaaKljdUosb4G41B&location=30.271933,120.1195
+            # 根据坐标添加地理信息
+            # {"status":0,"result":{"location":{"lng":120.11949999999993,"lat":30.271933048715849},"formatted_address":"浙江省杭州市西湖区西溪路","business":"西溪,西湖,古荡","addressComponent":{"country":"中国","country_code":0,"province":"浙江省","city":"杭州市","district":"西湖区","adcode":"330106","street":"西溪路","street_number":"","direction":"","distance":""},"pois":[],"poiRegions":[],"sematic_description":"秦亭山北123米","cityCode":179}}
+            shop = {
+                'id': id,
+                'name': res.get('name'),
+                'address': res.get('address'),
+                'latitude': res.get('latitude'),
+                'longitude': res.get('longitude'),
+                # 'city_code': _session.get(baidu_api).json()['result']['cityCode'],
+            }
+            log.error(prefix + json.dumps(shop, ensure_ascii=False))
+            return shop
+
+    batch_size = 100
+    batch_data_max_size = 5000
+    while id <= 999999999:
+        loop_start_at = time.time()
+        last_res_cnt = len(valid_shops)
+
+        results = list(filter(None, pool.map(_process_for_id, range(id, id + batch_size))))
+        # results = filter(None, map(_process_for_id, range(id, id+batch_size)))
+        valid_shops += results
+
+        id += batch_size
+
+        log_current_status(batch_size, id, last_res_cnt, loop_start_at, start_at, start_id, valid_shops)
+
+        if last_res_cnt != len(valid_shops):
+            with open('valid_shops_start_at_{start_id}.json'.format(start_id=start_id), 'w', encoding='utf-8') as save:
+                log.error('导出数据ing...')
+                json.dump(valid_shops, save, ensure_ascii=False, indent=2)
+                log.error('导出数据成功')
+        else:
+            # log.error('没有新数据')
+            pass
+
+        with open('__start_id.json', 'w', encoding='utf-8') as ip_fp:
+            json.dump(id, ip_fp)
+
+        if len(valid_shops) >= batch_data_max_size:
+            log.critical('本批次有效商铺数已超过%d，开始下一批次以减少json的dump的影响' % batch_data_max_size)
+            start_id = id
+            ban_cnt = 0
+            valid_shops = []
+            start_at = time.time()
+
+        pass
+    log.error('完成抓取')
+    # 合并多次的结果，并添加地理信息
+    merge_old_files_into_one_and_add_geo_info()
+
+
+def get_start_id_from_file():
+    try:
+        with open('__start_id.json', 'r', encoding='utf-8') as ip_fp:
+            start_id = json.load(ip_fp)
+    except Exception:
+        start_id = 0
+    return start_id
+
+
+def log_current_status(batch_size, id, last_res_cnt, loop_start_at, start_at, start_id, valid_shops):
+    total_items_cnt = len(valid_shops)
+    new_items_cnt = total_items_cnt - last_res_cnt
+    new_items_rate = 100 * new_items_cnt / batch_size
+    total_id = id - start_id
+    total_items_rate = 100 * total_items_cnt / total_id
+    loop_used = time.time() - loop_start_at
+    total_used = time.time() - start_at
+    req_uesd_avg = total_used / total_id
+    loop_used_avg = 100 * req_uesd_avg
+    ban_rate = 100 * ban_cnt / total_id
+    log.error(
+        '已连续抓取%d/%d(%.2f%%)个，导出目前已有数据%d/%d(%.2f%%)个，目前id为%d, 起始id为%d, 当前循环耗时%.2f(%.4f)秒，目前总计运行%.2f(%.4f)秒, 屏蔽次数%d/%d(%.2f%%)' % (
+            new_items_cnt, batch_size, new_items_rate, total_items_cnt, total_id, total_items_rate, id, start_id,
+            loop_used,
+            loop_used_avg, total_used, req_uesd_avg, ban_cnt, total_id, ban_rate))
+
+
+def merge_old_files_into_one_and_add_geo_info():
+    import json
+    import os
+    import shutil
+    from functools import reduce
+
+    shop_filenames = [filename for filename in os.listdir('.') if filename.startswith('valid_shops_start_at_')]
+
+    def get_records_in_file(file_name):
+        with open(file_name, encoding='utf-8') as shops:
+            return json.load(shops)
+
+    # 从各个文件中获取数据，并将其合并
+    items = reduce(lambda l1, l2: l1 + l2, map(get_records_in_file, shop_filenames))
+
+    # 过滤掉无效的数据
+    def is_valid_shop(shop):
+        invalid = shop['name'] is None or shop['longitude'] is None or shop['address'] is None or shop[
+                                                                                                      'latitude'] is None
+        return not invalid
+
+    items = filter(is_valid_shop, items)
+    items = list(items)
+
+    # 过滤掉重复的数据
+    processed = set()
+
+    def is_duplicated(shop):
+        if shop['id'] in processed:
+            return False
+        else:
+            processed.add(shop['id'])
+            return True
+
+    unique_items = filter(is_duplicated, items)
+    unique_items = list(unique_items)
+
+    duplicated_cnt = len(list(items)) - len(unique_items)
+    print('重复ID个数: ', duplicated_cnt)
+
+    total_ids = len(unique_items)
+    # total_range = unique_items[-1].get('id', 0)
+    total_range = max(unique_items, key=lambda item: item.get('id', 0)).get('id', 0)
+
+    rate = total_ids / total_range
+    print('总计:       ', total_ids)
+    print('遍历至:     ', total_range)
+    print('有效ID比率: ', rate)
+
+    # 添加城市信息（city_id and formatted_address)
+    print('添加地理信息ing')
+    _session = requests.session()
+    from multiprocessing.dummy import Pool as ThreadPool
+    pool = ThreadPool(8)
+    processed_status = {
+        'ran_cnt': 0,
+        'skipped_cnt': 0,
+        'banned': False,
+        'banned_cnt': 0
+    }
+
+    def fetch_cityid_and_formatted_address(item):
+        if 'city_code' in item:
+            processed_status['skipped_cnt'] += 1
+        elif processed_status['banned']:
+            processed_status['banned_cnt'] += 1
+        else:
+            api = 'http://api.map.baidu.com/geocoder/v2/'
+            res = _session.get(api, params={
+                'output': 'json',
+                'ak': 'Eze6dPlb3bnUrihPNaaKljdUosb4G41B',
+                'location': '{latitude},{longitude}'.format(latitude=item['latitude'], longitude=item['longitude']),
+            }).json()
+            if res['status'] != 0:
+                processed_status['banned'] = True
+                processed_status['banned_cnt'] = 1
+                return fetch_cityid_and_formatted_address(item)
+                pass
+            res = res['result']
+            item['city_code'] = res['cityCode']
+            item['formatted_address'] = res['formatted_address']
+            processed_status['ran_cnt'] += 1
+        ran_cnt, skipped_cnt, banned_cnt = processed_status['ran_cnt'], processed_status['skipped_cnt'], processed_status['banned_cnt']
+        cnt = ran_cnt + skipped_cnt
+
+        print('\rran:%6d, skipped: %6d, banned: %6d/ total: %6d(%.2f%%)' % (ran_cnt, skipped_cnt, banned_cnt, total_ids, 100 * cnt / total_ids), end='', flush=True)
+
+    pool.map(fetch_cityid_and_formatted_address, unique_items)
+    print()
+
+    # backup old files
+    # check if backup directory exists
+    import time
+    backup_directory = '_old_files/{backuped_at}'.format(backuped_at=time.strftime('%Y-%m-%d_%H-%M-%S'))
+    if not os.path.exists(backup_directory):
+        os.makedirs(backup_directory)
+
+    print('将旧的文件移至备份区 @', backup_directory)
+    for old_file in shop_filenames:
+        shutil.move(old_file, os.path.join(backup_directory, old_file))
+
+    # merge to one file
+    saved_as = 'valid_shops_start_at_0_to_{max_id}@total_{total}.json'.format(max_id=total_range, total=total_ids)
+    print('合并为一个文件 @ ', saved_as)
+    with open(saved_as, 'w', encoding='utf-8') as save:
+        json.dump(unique_items, save, ensure_ascii=False, indent=2)
 
 
 def main():
@@ -1159,11 +1437,15 @@ def main():
 
 
     # city = input('城市名: ')
-    # name = input('商家名: ')
+    # brand = input('商家品牌名: ')
+    # ids = input('商家ids：')
+    city = ''
+    brand = '周大虾龙虾盖浇饭'
+    ids = '1468934, 1314141, 1214943, 1215005, 1314147, 1314153, 1314143, 1314146, 1215087, 1214907, 1314151, 1797366, 1357350, 1215053, 1447024, 1215012, 1215019'
     #
     crawler = MeituanCrawler()
     # 将两种整合到一起
-    wb, saved_file = crawler.run_eleme('杭州', '外婆家')
+    wb, saved_file = crawler.run_eleme(city, brand, ids)
     wb.save(saved_file)
 
 
@@ -1172,31 +1454,7 @@ if __name__ == '__main__':
     # TODO: 提取类（url_fetcher, page_parser, item_exporter)，并设计各类职责，以及类的结构（继承与接口）
     # TODO: 提取各种设置到单独的类中
     # TODO：添加前端接口
-    timer(main)
-    # def patch_with_helper(worksheet):
-    #     # 添加辅助方法
-    #     def write_float(self, row, col, val):
-    #         self.write(row, col, float(val), type_fmt['float'])
-    #
-    #     def write_int(self, row, col, val):
-    #         self.write(row, col, int(val), type_fmt['int'])
-    #
-    #     def write_bool(self, row, col, val):
-    #         self.write(row, col, bool(val), type_fmt['bool'])
-    #
-    #     worksheet.write_float = types.MethodType(write_float, worksheet)
-    #     worksheet.write_int = types.MethodType(write_int, worksheet)
-    #     worksheet.write_bool = types.MethodType(write_bool, worksheet)
-    #
-    #
-    # wb = xlwt.Workbook(encoding='utf-8')
-    #
-    # ws = wb.add_sheet('商家汇总信息')  # type: xlwt.Worksheet
-    # patch_with_helper(ws)
-    #
-    # ws.write_float(0,0,'122.321312')
-    # ws.write_int(0,1,'1231')
-    #
-    # wb.save('test.xls')
-
+    # timer(main)
+    timer(get_eleme_ids)
+    # timer(merge_old_files_into_one_and_add_geo_info)
     pass
